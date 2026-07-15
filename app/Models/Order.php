@@ -2,16 +2,18 @@
 
 namespace App\Models;
 
+use App\States\Order\OrderState;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\ModelStates\HasStates;
 
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
-    use HasFactory;
+    use HasFactory, HasStates;
 
     protected $fillable = [
         'buyer_id',
@@ -29,6 +31,7 @@ class Order extends Model
     {
         return [
             'shipping_address' => 'array',
+            'status' => OrderState::class,
         ];
     }
 
