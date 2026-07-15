@@ -32,6 +32,8 @@ $register = function () {
 
     event(new Registered($user = User::create($validated)));
 
+    $user->assignRole('customer');
+
     Auth::login($user);
 
     $this->redirect(route('dashboard', absolute: false), navigate: true);
