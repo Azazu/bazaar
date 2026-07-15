@@ -1,0 +1,138 @@
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
+DC  := docker compose
+PHP := $(DC) exec php
+
+.DEFAULT_GOAL := help
+.PHONY: help build up down restart rebuild ps logs \
+        sh sh-nginx mysql redis-cli \
+        composer install update \
+        artisan migrate migrate-fresh rollback seed tinker key-gen \
+        test pint pint-test stan \
+        db-reset clean nuke init
+
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+# === Containers ===
+
+build: ## Build images
+	$(DC) build
+
+up: ## Start the stack in background
+	$(DC) up -d
+
+down: ## Stop and remove containers (DB data preserved in named volume)
+	$(DC) down
+
+restart: ## Restart all containers
+	$(DC) restart
+
+rebuild: ## Rebuild images from scratch and recreate containers
+	$(DC) build --no-cache
+	$(DC) up -d --force-recreate
+
+ps: ## Show container status
+	$(DC) ps
+
+logs: ## Tail logs of all services
+	$(DC) logs -f --tail=100
+
+# === Shells & clients ===
+
+sh: ## Open bash in the php container
+	$(PHP) bash
+
+sh-nginx: ## Open sh in the nginx container
+	$(DC) exec nginx sh
+
+mysql: ## Open mysql client connected to the app DB
+	$(DC) exec -e MYSQL_PWD=$(MYSQL_PASSWORD) mysql mysql -u$(MYSQL_USER) $(MYSQL_DATABASE)
+
+redis-cli: ## Open redis-cli
+	$(DC) exec redis redis-cli
+
+# === Composer ===
+
+install: ## composer install
+	$(PHP) composer install
+
+update: ## composer update
+	$(PHP) composer update
+
+composer: ## Run a composer command, e.g. make composer require foo/bar
+	$(PHP) composer $(filter-out $@,$(MAKECMDGOALS))
+
+# === Artisan / app ===
+
+artisan: ## Run an artisan command, e.g. make artisan route:list
+	$(PHP) php artisan $(filter-out $@,$(MAKECMDGOALS))
+
+migrate: ## Apply pending migrations
+	$(PHP) php artisan migrate
+
+migrate-fresh: ## Drop all tables and re-run migrations + seeders (DESTRUCTIVE)
+	$(PHP) php artisan migrate:fresh --seed
+
+rollback: ## Roll back the last migration batch
+	$(PHP) php artisan migrate:rollback
+
+seed: ## Run database seeders
+	$(PHP) php artisan db:seed
+
+tinker: ## Open Tinker REPL
+	$(PHP) php artisan tinker
+
+key-gen: ## Generate APP_KEY
+	$(PHP) php artisan key:generate
+
+# === Quality ===
+
+test: ## Run the test suite (Pest/PHPUnit)
+	$(PHP) php artisan test
+
+pint: ## Format code with Laravel Pint
+	$(PHP) vendor/bin/pint
+
+pint-test: ## Check formatting without changing files
+	$(PHP) vendor/bin/pint --test
+
+stan: ## Static analysis (Larastan/PHPStan)
+	$(PHP) vendor/bin/phpstan analyse
+
+# === Destructive ===
+
+db-reset: ## Drop and recreate the application DB (DESTRUCTIVE)
+	@printf 'This will DROP and recreate the "%s" database. Continue? [y/N] ' "$(MYSQL_DATABASE)"; \
+	read ans; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo "Aborted."; exit 0; fi; \
+	$(DC) exec -e MYSQL_PWD=$(MYSQL_ROOT_PASSWORD) mysql mysql -uroot \
+	  -e "DROP DATABASE IF EXISTS \`$(MYSQL_DATABASE)\`; CREATE DATABASE \`$(MYSQL_DATABASE)\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON \`$(MYSQL_DATABASE)\`.* TO '$(MYSQL_USER)'@'%';"
+
+clean: ## Stop containers and DELETE the MySQL data volume (DESTRUCTIVE)
+	@printf 'This will stop containers and DELETE the persistent MySQL volume. Continue? [y/N] '; \
+	read ans; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo "Aborted."; exit 0; fi; \
+	$(DC) down -v
+
+nuke: ## down -v + remove project images (DESTRUCTIVE)
+	@printf 'This will stop containers, DELETE the MySQL volume and REMOVE project images. Continue? [y/N] '; \
+	read ans; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo "Aborted."; exit 0; fi; \
+	$(DC) down --rmi local -v
+
+# === Init ===
+
+init: ## First-time setup: build, up, composer install, key:generate, migrate
+	$(DC) build
+	$(DC) up -d
+	$(PHP) composer install
+	$(PHP) php artisan key:generate
+	$(PHP) php artisan migrate
+
+# Catch-all so positional args (e.g. artisan sub-command) don't fail as missing targets
+%:
+	@:
