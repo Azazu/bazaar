@@ -70,7 +70,9 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
             'block_for' => null,
-            'after_commit' => false,
+            // Release queued jobs only after the surrounding DB transaction commits,
+            // so a rolled-back payment never sends a confirmation.
+            'after_commit' => true,
         ],
 
         'deferred' => [

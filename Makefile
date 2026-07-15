@@ -88,6 +88,9 @@ seed: ## Run database seeders
 tinker: ## Open Tinker REPL
 	$(PHP) php artisan tinker
 
+queue: ## Run the Redis queue worker (for notifications/jobs)
+	$(PHP) php artisan queue:work
+
 key-gen: ## Generate APP_KEY
 	$(PHP) php artisan key:generate
 
