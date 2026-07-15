@@ -20,7 +20,7 @@ with(fn () => [
             <a href="{{ route('products.show', $product) }}" class="border rounded-lg p-4 bg-white shadow-sm block hover:shadow-md">
                 <div class="aspect-square bg-gray-100 rounded mb-3"></div> {{-- image placeholder --}}
                 <h2 class="font-medium">{{ $product->title }}</h2>
-                <p class="text-gray-600">${{ number_format($product->price_cents / 100, 2) }}</p>
+                <p class="text-gray-600">{{ money($product->price_cents) }}</p>
             </a>
         @endforeach
     </div>

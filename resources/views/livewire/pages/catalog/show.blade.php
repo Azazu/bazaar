@@ -34,7 +34,7 @@ $addToCart = function (int $variantId) {
                     <span class="text-gray-400 text-sm">({{ $variant->sku }})</span></span>
 
                 <div class="flex items-center gap-3">
-                    <span>${{ number_format($variant->price_cents / 100, 2) }}</span>
+                    <span>{{ money($variant->price_cents) }}</span>
 
                     @if ($variant->stock > 0)
                         <button wire:click="addToCart({{ $variant->id }})"

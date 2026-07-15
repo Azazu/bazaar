@@ -35,7 +35,7 @@ $remove = function (int $variantId) {
                         <input type="number" min="1" value="{{ $line['qty'] }}"
                                wire:change="updateQty({{ $line['variant']->id }}, $event.target.value)"
                                class="w-16 border rounded p-1 text-center">
-                        <span class="w-24 text-right">${{ number_format($line['line_total_cents'] / 100, 2) }}</span>
+                        <span class="w-24 text-right">{{ money($line['line_total_cents']) }}</span>
                         <button wire:click="remove({{ $line['variant']->id }})"
                                 class="text-red-600 text-sm hover:underline">{{ __('Remove') }}</button>
                     </div>
@@ -44,7 +44,7 @@ $remove = function (int $variantId) {
         </ul>
 
         <div class="flex items-center justify-between mt-6">
-            <span class="text-lg font-semibold">{{ __('Total') }}: ${{ number_format($this->total / 100, 2) }}</span>
+            <span class="text-lg font-semibold">{{ __('Total') }}: {{ money($this->total) }}</span>
             <button class="px-4 py-2 bg-gray-300 text-gray-600 rounded cursor-not-allowed" disabled>
                 {{ __('Checkout') }} — {{ __('coming in Phase 2') }}
             </button>
