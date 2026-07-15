@@ -2,16 +2,22 @@
 
 use App\Enums\ProductStatus;
 use App\Models\Product;
+use App\Services\Cart\CartService;
 
-use function Livewire\Volt\{state, mount};
+use function Livewire\Volt\{mount, state};
 
-state(['product']);
+state(['product', 'justAdded' => null]);
 
 mount(function (Product $product) {
-    abort_if($product->status !== ProductStatus::Published, 404);   // draft/archived → 404
+    abort_if($product->status !== ProductStatus::Published, 404); // draft/archived → 404
 
     $this->product = $product->load('variants');
 });
+
+$addToCart = function (int $variantId) {
+    app(CartService::class)->add($variantId);
+    $this->justAdded = $variantId;
+};
 
 ?>
 
@@ -23,11 +29,25 @@ mount(function (Product $product) {
     <h2 class="font-semibold mt-6 mb-2">{{ __('Variants') }}</h2>
     <ul class="divide-y border rounded-lg bg-white">
         @foreach ($product->variants as $variant)
-            <li class="flex justify-between p-3">
+            <li class="flex items-center justify-between p-3" wire:key="variant-{{ $variant->id }}">
                 <span>{{ $variant->name }}
                     <span class="text-gray-400 text-sm">({{ $variant->sku }})</span></span>
-                <span>${{ number_format($variant->price_cents / 100, 2) }}
-                    · {{ $variant->stock > 0 ? __('In stock') : __('Out of stock') }}</span>
+
+                <div class="flex items-center gap-3">
+                    <span>${{ number_format($variant->price_cents / 100, 2) }}</span>
+
+                    @if ($variant->stock > 0)
+                        <button wire:click="addToCart({{ $variant->id }})"
+                                class="text-sm px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">
+                            {{ __('Add to cart') }}
+                        </button>
+                        @if ($justAdded === $variant->id)
+                            <span class="text-green-600 text-sm">{{ __('Added') }}</span>
+                        @endif
+                    @else
+                        <span class="text-gray-400 text-sm">{{ __('Out of stock') }}</span>
+                    @endif
+                </div>
             </li>
         @endforeach
     </ul>

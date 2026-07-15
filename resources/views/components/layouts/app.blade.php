@@ -14,6 +14,9 @@
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <a href="{{ route('catalog.index') }}" class="text-xl font-bold">Bazaar</a>
             <nav class="text-sm space-x-4">
+                <a href="{{ route('cart.index') }}" class="text-gray-600 hover:text-gray-900">
+                    {{ __('Cart') }} ({{ app(\App\Services\Cart\CartService::class)->count() }})
+                </a>
                 @auth
                     <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">{{ __('Dashboard') }}</a>
                 @else
