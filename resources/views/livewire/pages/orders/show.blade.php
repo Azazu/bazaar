@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Order;
+use App\Services\Payment\PaymentService;
+use Illuminate\Support\Str;
 
 use function Livewire\Volt\{mount, state};
 
@@ -11,6 +13,14 @@ mount(function (Order $order) {
 
     $this->order = $order->load('items');
 });
+
+// Sandbox payment: start the intent, then simulate the provider's "succeeded" callback.
+$pay = function () {
+    $payment = app(PaymentService::class)->start($this->order);
+    app(PaymentService::class)->confirm('evt_'.Str::uuid(), $payment->transaction_id);
+
+    $this->order->refresh();
+};
 
 ?>
 
@@ -37,6 +47,15 @@ mount(function (Order $order) {
         {{ __('Shipping to') }}: {{ $order->shipping_address['name'] }}, {{ $order->shipping_address['line1'] }},
         {{ $order->shipping_address['city'] }} {{ $order->shipping_address['postcode'] }}, {{ $order->shipping_address['country'] }}
     </div>
+
+    @if ($order->status instanceof \App\States\Order\Pending)
+        <div class="mt-6">
+            <button wire:click="pay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                {{ __('Pay (test)') }}
+            </button>
+            <p class="text-xs text-gray-400 mt-1">{{ __('Sandbox payment — no real charge.') }}</p>
+        </div>
+    @endif
 
     <a href="{{ route('catalog.index') }}" class="inline-block mt-6 text-indigo-600 underline">{{ __('Continue shopping') }}</a>
 </div>
