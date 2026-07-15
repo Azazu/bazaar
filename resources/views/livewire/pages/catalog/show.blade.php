@@ -4,9 +4,9 @@ use App\Enums\ProductStatus;
 use App\Models\Product;
 use App\Services\Cart\CartService;
 
-use function Livewire\Volt\{mount, state};
+use function Livewire\Volt\{computed, mount, state};
 
-state(['product', 'justAdded' => null]);
+state(['product', 'justAdded' => null, 'rating' => 5, 'body' => '', 'reviewSubmitted' => false]);
 
 mount(function (Product $product) {
     abort_if($product->status !== ProductStatus::Published, 404); // draft/archived → 404
@@ -14,9 +14,37 @@ mount(function (Product $product) {
     $this->product = $product->load('variants');
 });
 
+$reviews = computed(fn () => $this->product->reviews()->approved()->with('user')->latest()->get());
+$averageRating = computed(fn () => $this->product->averageRating());
+$hasReviewed = computed(fn () => auth()->check()
+    && $this->product->reviews()->where('user_id', auth()->id())->exists());
+$canReview = computed(fn () => auth()->check()
+    && ! $this->hasReviewed
+    && $this->product->purchasedBy(auth()->user()));
+
 $addToCart = function (int $variantId) {
     app(CartService::class)->add($variantId);
     $this->justAdded = $variantId;
+};
+
+$submitReview = function () {
+    abort_unless(auth()->check() && $this->product->purchasedBy(auth()->user()), 403);
+
+    $this->validate([
+        'rating' => ['required', 'integer', 'min:1', 'max:5'],
+        'body' => ['nullable', 'string', 'max:2000'],
+    ]);
+
+    $this->product->reviews()->create([
+        'user_id' => auth()->id(),
+        'rating' => $this->rating,
+        'body' => $this->body,
+        'approved' => false, // pending moderation (admin approves in Phase 3)
+    ]);
+
+    $this->reset('body');
+    $this->rating = 5;
+    $this->reviewSubmitted = true;
 };
 
 ?>
@@ -51,4 +79,54 @@ $addToCart = function (int $variantId) {
             </li>
         @endforeach
     </ul>
+
+    {{-- Reviews --}}
+    <div class="mt-10">
+        <h2 class="font-semibold mb-3">
+            {{ __('Reviews') }}
+            @if ($this->reviews->isNotEmpty())
+                <span class="text-yellow-500">&#9733; {{ $this->averageRating }}</span>
+                <span class="text-gray-400 text-sm">({{ $this->reviews->count() }})</span>
+            @endif
+        </h2>
+
+        @if ($this->reviews->isEmpty())
+            <p class="text-gray-500 text-sm">{{ __('No reviews yet.') }}</p>
+        @else
+            <ul class="space-y-3">
+                @foreach ($this->reviews as $review)
+                    <li class="border rounded-lg p-3 bg-white" wire:key="review-{{ $review->id }}">
+                        <div class="text-yellow-500 text-sm">{{ str_repeat('★', $review->rating).str_repeat('☆', 5 - $review->rating) }}</div>
+                        @if ($review->body)
+                            <p class="text-gray-700 mt-1">{{ $review->body }}</p>
+                        @endif
+                        <p class="text-xs text-gray-400 mt-1">— {{ $review->user->name }}</p>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+
+        @auth
+            @if ($reviewSubmitted)
+                <p class="mt-4 text-green-600 text-sm">{{ __('Thanks! Your review is pending moderation.') }}</p>
+            @elseif ($this->hasReviewed)
+                <p class="mt-4 text-gray-400 text-sm">{{ __('You have already reviewed this product.') }}</p>
+            @elseif ($this->canReview)
+                <form wire:submit="submitReview" class="mt-4 space-y-2 max-w-md">
+                    <h3 class="font-medium">{{ __('Write a review') }}</h3>
+                    <select wire:model="rating" class="border-gray-300 rounded-md shadow-sm">
+                        @foreach ([5, 4, 3, 2, 1] as $r)
+                            <option value="{{ $r }}">{{ $r }} &#9733;</option>
+                        @endforeach
+                    </select>
+                    <textarea wire:model="body" rows="3" class="block w-full border-gray-300 rounded-md shadow-sm"
+                              placeholder="{{ __('Your thoughts...') }}"></textarea>
+                    <x-input-error :messages="$errors->get('body')" />
+                    <x-primary-button>{{ __('Submit review') }}</x-primary-button>
+                </form>
+            @else
+                <p class="mt-4 text-gray-400 text-sm">{{ __('Only buyers of this product can review it.') }}</p>
+            @endif
+        @endauth
+    </div>
 </div>
