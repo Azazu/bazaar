@@ -105,6 +105,9 @@ pint-test: ## Check formatting without changing files
 stan: ## Static analysis (Larastan/PHPStan)
 	$(PHP) vendor/bin/phpstan analyse
 
+assets: ## Build front-end assets with Vite (run after adding Tailwind classes)
+	$(PHP) npm run build
+
 # === Destructive ===
 
 db-reset: ## Drop and recreate the application DB (DESTRUCTIVE)
