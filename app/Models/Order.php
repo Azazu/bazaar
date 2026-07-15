@@ -22,6 +22,7 @@ class Order extends Model
         'subtotal_cents',
         'shipping_cents',
         'discount_cents',
+        'coupon_id',
         'total_cents',
         'shipping_address',
         'shipping_method',
@@ -38,6 +39,11 @@ class Order extends Model
     public function buyer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'buyer_id');
+    }
+
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
     }
 
     public function items(): HasMany

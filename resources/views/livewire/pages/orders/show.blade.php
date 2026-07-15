@@ -11,7 +11,7 @@ state(['order']);
 mount(function (Order $order) {
     abort_unless($order->buyer_id === auth()->id(), 403); // a buyer sees only their own orders
 
-    $this->order = $order->load('items');
+    $this->order = $order->load('items', 'coupon');
 });
 
 // Sandbox payment: start the intent, then simulate the provider's "succeeded" callback.
@@ -39,6 +39,9 @@ $pay = function () {
 
     <dl class="mt-6 space-y-1 text-right">
         <div><dt class="inline text-gray-500">{{ __('Subtotal') }}:</dt> <dd class="inline font-medium">{{ money($order->subtotal_cents) }}</dd></div>
+        @if ($order->discount_cents > 0)
+            <div class="text-green-700"><dt class="inline">{{ __('Discount') }}@if ($order->coupon) ({{ $order->coupon->code }})@endif:</dt> <dd class="inline font-medium">−{{ money($order->discount_cents) }}</dd></div>
+        @endif
         <div><dt class="inline text-gray-500">{{ __('Shipping') }}:</dt> <dd class="inline font-medium">{{ money($order->shipping_cents) }}</dd></div>
         <div class="text-lg"><dt class="inline text-gray-500">{{ __('Total') }}:</dt> <dd class="inline font-bold">{{ money($order->total_cents) }}</dd></div>
     </dl>

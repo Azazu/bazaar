@@ -2,6 +2,7 @@
 
 namespace App\Services\Checkout;
 
+use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\Cart\CartService;
@@ -23,7 +24,7 @@ class CheckoutService
      *
      * @param  array<string, string>  $shippingAddress
      */
-    public function place(User $buyer, array $shippingAddress, string $shippingMethod): Order
+    public function place(User $buyer, array $shippingAddress, string $shippingMethod, ?Coupon $coupon = null): Order
     {
         $lines = $this->cart->items();
 
@@ -33,16 +34,21 @@ class CheckoutService
 
         $subtotal = $this->cart->total();
         $shipping = self::SHIPPING_RATES[$shippingMethod] ?? 0;
-        $discount = 0; // coupons arrive in a later block
+
+        // Re-validate the coupon at order time — never trust a discount computed on the client.
+        $discount = ($coupon && $coupon->isValidFor($subtotal)) ? $coupon->discountFor($subtotal) : 0;
+        $couponId = $discount > 0 ? $coupon->id : null;
+
         $total = $subtotal + $shipping - $discount;
 
-        return DB::transaction(function () use ($buyer, $lines, $shippingAddress, $shippingMethod, $subtotal, $shipping, $discount, $total) {
+        return DB::transaction(function () use ($buyer, $lines, $shippingAddress, $shippingMethod, $subtotal, $shipping, $discount, $total, $coupon, $couponId) {
             $order = Order::create([
                 'buyer_id' => $buyer->id,
                 'currency' => 'USD',
                 'subtotal_cents' => $subtotal,
                 'shipping_cents' => $shipping,
                 'discount_cents' => $discount,
+                'coupon_id' => $couponId,
                 'total_cents' => $total,
                 'shipping_address' => $shippingAddress,
                 'shipping_method' => $shippingMethod,
@@ -58,6 +64,10 @@ class CheckoutService
                     'unit_price_cents' => $variant->price_cents,   // snapshot price
                     'qty' => $line['qty'],
                 ]);
+            }
+
+            if ($couponId !== null) {
+                $coupon->increment('used_count');
             }
 
             $this->cart->clear();

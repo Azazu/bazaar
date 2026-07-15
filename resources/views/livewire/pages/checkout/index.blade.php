@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Coupon;
 use App\Services\Cart\CartService;
 use App\Services\Checkout\CheckoutService;
 
@@ -12,6 +13,9 @@ state([
     'postcode' => '',
     'country' => '',
     'shipping_method' => 'standard',
+    'coupon' => '',
+    'appliedCode' => null,
+    'couponError' => null,
 ]);
 
 rules([
@@ -25,6 +29,28 @@ rules([
 
 $items = computed(fn () => app(CartService::class)->items());
 $subtotal = computed(fn () => app(CartService::class)->total());
+$appliedCoupon = computed(fn () => $this->appliedCode ? Coupon::where('code', $this->appliedCode)->first() : null);
+$discount = computed(fn () => $this->appliedCoupon?->isValidFor($this->subtotal)
+    ? $this->appliedCoupon->discountFor($this->subtotal)
+    : 0);
+
+$applyCoupon = function () {
+    $this->couponError = null;
+    $coupon = Coupon::where('code', strtoupper(trim($this->coupon)))->first();
+
+    if (! $coupon || ! $coupon->isValidFor(app(CartService::class)->total())) {
+        $this->appliedCode = null;
+        $this->couponError = __('Invalid or expired coupon.');
+
+        return;
+    }
+
+    $this->appliedCode = $coupon->code;
+};
+
+$removeCoupon = function () {
+    $this->reset('coupon', 'appliedCode', 'couponError');
+};
 
 $place = function () {
     $validated = $this->validate();
@@ -32,6 +58,8 @@ $place = function () {
     if (app(CartService::class)->items()->isEmpty()) {
         return $this->redirect(route('catalog.index'), navigate: true);
     }
+
+    $coupon = $this->appliedCode ? Coupon::where('code', $this->appliedCode)->first() : null;
 
     $order = app(CheckoutService::class)->place(
         auth()->user(),
@@ -43,6 +71,7 @@ $place = function () {
             'country' => strtoupper($validated['country']),
         ],
         $validated['shipping_method'],
+        $coupon,
     );
 
     $this->redirect(route('orders.show', $order), navigate: true);
@@ -59,18 +88,46 @@ $place = function () {
         </p>
     @else
         {{-- Order summary --}}
-        <ul class="divide-y border rounded-lg bg-white mb-6">
+        <ul class="divide-y border rounded-lg bg-white mb-4">
             @foreach ($this->items as $line)
                 <li class="flex justify-between p-3" wire:key="line-{{ $line['variant']->id }}">
                     <span>{{ $line['variant']->product->title }} — {{ $line['variant']->name }} × {{ $line['qty'] }}</span>
                     <span>{{ money($line['line_total_cents']) }}</span>
                 </li>
             @endforeach
-            <li class="flex justify-between p-3 font-semibold">
+            <li class="flex justify-between p-3">
                 <span>{{ __('Subtotal') }}</span>
                 <span>{{ money($this->subtotal) }}</span>
             </li>
+            @if ($this->discount > 0)
+                <li class="flex justify-between p-3 text-green-700">
+                    <span>{{ __('Discount') }} ({{ $this->appliedCode }})</span>
+                    <span>−{{ money($this->discount) }}</span>
+                </li>
+            @endif
         </ul>
+
+        {{-- Coupon --}}
+        <div class="mb-6">
+            @if ($this->discount > 0)
+                <p class="text-sm text-green-700">
+                    {{ __('Coupon applied') }}: <strong>{{ $this->appliedCode }}</strong>
+                    <button type="button" wire:click="removeCoupon" class="ms-2 text-gray-500 underline">{{ __('remove') }}</button>
+                </p>
+            @else
+                <div class="flex items-end gap-2">
+                    <div class="flex-1 max-w-xs">
+                        <x-input-label for="coupon" :value="__('Coupon code')" />
+                        <x-text-input wire:model="coupon" id="coupon" class="block mt-1 w-full" type="text" />
+                    </div>
+                    <button type="button" wire:click="applyCoupon"
+                            class="px-3 py-2 rounded bg-gray-800 text-white text-sm hover:bg-gray-700">{{ __('Apply') }}</button>
+                </div>
+                @if ($couponError)
+                    <p class="text-sm text-red-600 mt-1">{{ $couponError }}</p>
+                @endif
+            @endif
+        </div>
 
         {{-- Shipping form --}}
         <form wire:submit="place" class="space-y-4">
