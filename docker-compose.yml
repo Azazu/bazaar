@@ -67,6 +67,14 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Local mail catcher: PHP sends to mailpit:1025 (SMTP), you read mail in the
+  # web UI. Nothing leaves the machine — dev only.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${FORWARD_MAILPIT_PORT:-8025}:8025"
+    restart: unless-stopped
+
 volumes:
   mysql_data:
   composer_cache:
