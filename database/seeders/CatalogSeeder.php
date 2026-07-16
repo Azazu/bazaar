@@ -26,12 +26,10 @@ class CatalogSeeder extends Seeder
             ->map(fn (User $vendor) => Store::factory()->create(['owner_id' => $vendor->id]));
 
         $products = Product::factory(40)
+            ->recycle($stores) // distribute products across the seeded stores
             ->has(ProductVariant::factory()->count(3), 'variants')
             ->create()
-            ->each(function (Product $product) use ($categories, $stores) {
-                $product->update(['store_id' => $stores->random()->id]);
-                $product->categories()->attach($categories->random(2)->pluck('id'));
-            });
+            ->each(fn (Product $product) => $product->categories()->attach($categories->random(2)->pluck('id')));
 
         // A few reviewers leave approved reviews so products have ratings to show.
         $reviewers = User::factory(5)->create();

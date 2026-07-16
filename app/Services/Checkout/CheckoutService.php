@@ -54,16 +54,34 @@ class CheckoutService
                 'shipping_method' => $shippingMethod,
             ]);
 
+            // Create snapshot line items, grouped by the store they belong to.
+            $itemsByStore = [];
+
             foreach ($lines as $line) {
                 $variant = $line['variant'];
 
-                $order->items()->create([
+                $item = $order->items()->create([
                     'product_variant_id' => $variant->id,
                     'product_title' => $variant->product->title,   // snapshot
                     'variant_name' => $variant->name,              // snapshot
                     'unit_price_cents' => $variant->price_cents,   // snapshot price
                     'qty' => $line['qty'],
                 ]);
+
+                $itemsByStore[$variant->product->store_id][] = $item;
+            }
+
+            // Split into one sub-order per store; re-point each line to its sub-order.
+            foreach ($itemsByStore as $storeId => $items) {
+                $subOrder = $order->subOrders()->create([
+                    'store_id' => $storeId,
+                    'status' => 'pending',
+                    'subtotal_cents' => collect($items)->sum(fn ($i) => $i->unit_price_cents * $i->qty),
+                ]);
+
+                foreach ($items as $item) {
+                    $item->update(['sub_order_id' => $subOrder->id]);
+                }
             }
 
             if ($couponId !== null) {

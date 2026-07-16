@@ -32,6 +32,11 @@ class Store extends Model
         return $this->hasMany(Product::class);
     }
 
+    public function subOrders(): HasMany
+    {
+        return $this->hasMany(SubOrder::class);
+    }
+
     public function scopeActive(Builder $query): void
     {
         $query->where('status', StoreStatus::Active);

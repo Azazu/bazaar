@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Enums\ProductStatus;
 use App\Models\Product;
+use App\Models\Store;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -21,6 +22,7 @@ class ProductFactory extends Factory
         $title = fake()->unique()->words(3, true);
 
         return [
+            'store_id' => Store::factory(),
             'title' => ucfirst($title),
             'slug' => str($title)->slug(),
             'description' => fake()->paragraph(),
