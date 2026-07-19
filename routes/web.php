@@ -22,6 +22,7 @@ Volt::route('/orders/{order}', 'pages.orders.show')->middleware('auth')->name('o
 Route::middleware(['auth', 'role:vendor'])->prefix('vendor')->name('vendor.')->group(function () {
     Volt::route('/orders', 'pages.vendor.orders.index')->name('orders');
     Volt::route('/products', 'pages.vendor.products.index')->name('products');
+    Volt::route('/payouts', 'pages.vendor.payouts.index')->name('payouts');
 });
 
 require __DIR__.'/auth.php';

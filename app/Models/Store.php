@@ -37,6 +37,11 @@ class Store extends Model
         return $this->hasMany(SubOrder::class);
     }
 
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(Payout::class);
+    }
+
     public function scopeActive(Builder $query): void
     {
         $query->where('status', StoreStatus::Active);

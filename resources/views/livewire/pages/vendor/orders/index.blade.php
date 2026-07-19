@@ -35,7 +35,13 @@ $advance = function (SubOrder $subOrder) {
 ?>
 
 <div class="max-w-5xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-6">{{ __('Incoming orders') }}</h1>
+    <h1 class="text-2xl font-bold mb-4">{{ __('Incoming orders') }}</h1>
+
+    <nav class="text-sm mb-6 space-x-4">
+        <a href="{{ route('vendor.orders') }}" class="font-medium">{{ __('Orders') }}</a>
+        <a href="{{ route('vendor.products') }}" class="text-indigo-600 hover:underline">{{ __('Products') }}</a>
+        <a href="{{ route('vendor.payouts') }}" class="text-indigo-600 hover:underline">{{ __('Payouts') }}</a>
+    </nav>
 
     @if ($this->subOrders->isEmpty())
         <p class="text-gray-500">{{ __('No orders yet.') }}</p>

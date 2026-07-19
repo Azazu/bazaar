@@ -13,7 +13,13 @@ $products = computed(function () {
 ?>
 
 <div class="max-w-5xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-6">{{ __('My products') }}</h1>
+    <h1 class="text-2xl font-bold mb-4">{{ __('My products') }}</h1>
+
+    <nav class="text-sm mb-6 space-x-4">
+        <a href="{{ route('vendor.orders') }}" class="text-indigo-600 hover:underline">{{ __('Orders') }}</a>
+        <a href="{{ route('vendor.products') }}" class="font-medium">{{ __('Products') }}</a>
+        <a href="{{ route('vendor.payouts') }}" class="text-indigo-600 hover:underline">{{ __('Payouts') }}</a>
+    </nav>
 
     @if ($this->products->isEmpty())
         <p class="text-gray-500">{{ __('No products yet.') }}</p>
