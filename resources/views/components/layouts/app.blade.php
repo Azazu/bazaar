@@ -18,6 +18,9 @@
                     {{ __('Cart') }} ({{ app(\App\Services\Cart\CartService::class)->count() }})
                 </a>
                 @auth
+                    @role('vendor')
+                        <a href="{{ route('vendor.orders') }}" class="text-gray-600 hover:text-gray-900">{{ __('Vendor') }}</a>
+                    @endrole
                     <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">{{ __('Dashboard') }}</a>
                 @else
                     <a href="{{ route('login') }}" class="text-gray-600 hover:text-gray-900">{{ __('Log in') }}</a>

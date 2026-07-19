@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -23,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Admins bypass all policy checks.
+        Gate::before(fn (User $user) => $user->hasRole('admin') ? true : null);
     }
 }
