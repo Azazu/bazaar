@@ -2,12 +2,18 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "azazu/bazaar",
     "type": "project",
-    "description": "Bazaar — a multi-vendor e-commerce marketplace built with Laravel.",
-    "keywords": ["laravel", "marketplace", "e-commerce", "multi-vendor"],
+    "description": "Bazaar \u2014 a multi-vendor e-commerce marketplace built with Laravel.",
+    "keywords": [
+        "laravel",
+        "marketplace",
+        "e-commerce",
+        "multi-vendor"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.3",
         "brick/money": "^0.14.0",
+        "filament/filament": "^4.12",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^3.6.4",
@@ -60,7 +66,8 @@
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"

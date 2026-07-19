@@ -4,6 +4,10 @@
 /public/build
 /public/hot
 /public/storage
+# Filament vendor assets — republished by `filament:upgrade` on deploy
+/public/css/filament
+/public/js/filament
+/public/fonts/filament
 /storage/*.key
 /storage/pail
 .env
