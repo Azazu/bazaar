@@ -44,6 +44,38 @@ class Product extends Model
         $query->where('status', ProductStatus::Published);
     }
 
+    /**
+     * Eager-load the public rating (average + count of approved reviews) as
+     * `reviews_avg_rating` / `reviews_count` — one aggregate query, no N+1 on lists.
+     */
+    public function scopeWithRating(Builder $query): void
+    {
+        $query
+            ->withAvg(['reviews as reviews_avg_rating' => fn (Builder $q) => $q->approved()], 'rating')
+            ->withCount(['reviews as reviews_count' => fn (Builder $q) => $q->approved()]);
+    }
+
+    /**
+     * Catalog filters. Expects already-validated, normalized input
+     * (see ProductIndexRequest::filters()).
+     *
+     * @param  array{category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, sort?: ?string}  $filters
+     */
+    public function scopeFilter(Builder $query, array $filters): void
+    {
+        $query
+            ->when($filters['category'] ?? null, fn (Builder $q, string $slug) => $q->whereRelation('categories', 'slug', $slug))
+            ->when(isset($filters['min_price']), fn (Builder $q) => $q->where('price_cents', '>=', $filters['min_price']))
+            ->when(isset($filters['max_price']), fn (Builder $q) => $q->where('price_cents', '<=', $filters['max_price']))
+            ->when($filters['in_stock'] ?? false, fn (Builder $q) => $q->whereHas('variants', fn (Builder $v) => $v->where('stock', '>', 0)));
+
+        match ($filters['sort'] ?? 'newest') {
+            'price_asc' => $query->orderBy('price_cents'),
+            'price_desc' => $query->orderByDesc('price_cents'),
+            default => $query->latest(),
+        };
+    }
+
     public function reviews(): MorphMany
     {
         return $this->morphMany(Review::class, 'reviewable');

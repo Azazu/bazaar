@@ -22,7 +22,7 @@ class StoreFactory extends Factory
         return [
             'owner_id' => User::factory(),
             'name' => $name,
-            'slug' => str($name)->slug(),
+            'slug' => str($name)->slug()->toString(),
             'description' => fake()->sentence(),
             'status' => StoreStatus::Active,
         ];

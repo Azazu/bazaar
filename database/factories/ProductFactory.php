@@ -24,7 +24,7 @@ class ProductFactory extends Factory
         return [
             'store_id' => Store::factory(),
             'title' => ucfirst($title),
-            'slug' => str($title)->slug(),
+            'slug' => str($title)->slug()->toString(),
             'description' => fake()->paragraph(),
             'price_cents' => fake()->numberBetween(500, 50_000),
             'currency' => 'USD',

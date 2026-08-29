@@ -21,7 +21,7 @@ class CategoryFactory extends Factory
 
         return [
             'name' => ucfirst($name),
-            'slug' => str($name)->slug(),
+            'slug' => str($name)->slug()->toString(),
         ];
     }
 }

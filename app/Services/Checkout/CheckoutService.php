@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 class CheckoutService
 {
     /** Flat shipping rates in minor units (cents), keyed by method. */
-    private const SHIPPING_RATES = [
+    public const SHIPPING_RATES = [
         'standard' => 500,
         'express' => 1500,
     ];

@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Order;
+use App\Models\ProductVariant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +47,15 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/** Give a user a paid order containing the variant (so they qualify to review it). */
+function paidPurchase(User $user, ProductVariant $variant): void
 {
-    // ..
+    $order = Order::factory()->create(['buyer_id' => $user->id, 'status' => 'paid']);
+    $order->items()->create([
+        'product_variant_id' => $variant->id,
+        'product_title' => $variant->product->title,
+        'variant_name' => $variant->name,
+        'unit_price_cents' => $variant->price_cents,
+        'qty' => 1,
+    ]);
 }
