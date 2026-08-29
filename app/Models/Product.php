@@ -11,11 +11,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Laravel\Scout\Searchable;
 
 class Product extends Model
 {
     /** @use HasFactory<ProductFactory> */
-    use HasFactory;
+    use HasFactory, Searchable;
 
     protected $fillable = ['store_id', 'title', 'slug', 'description', 'price_cents', 'currency', 'status'];
 
@@ -45,6 +46,26 @@ class Product extends Model
     }
 
     /**
+     * What the search index knows about a product. With the database driver these keys are
+     * the columns matched with LIKE; with Meilisearch they become the indexed document.
+     *
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'title' => $this->title,
+            'description' => $this->description,
+        ];
+    }
+
+    /** Drafts and archived products never enter the index (matters for Meilisearch, not LIKE). */
+    public function shouldBeSearchable(): bool
+    {
+        return $this->status === ProductStatus::Published;
+    }
+
+    /**
      * Eager-load the public rating (average + count of approved reviews) as
      * `reviews_avg_rating` / `reviews_count` — one aggregate query, no N+1 on lists.
      */
@@ -59,7 +80,7 @@ class Product extends Model
      * Catalog filters. Expects already-validated, normalized input
      * (see ProductIndexRequest::filters()).
      *
-     * @param  array{category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, sort?: ?string}  $filters
+     * @param  array{category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, min_rating?: ?int, sort?: ?string}  $filters
      */
     public function scopeFilter(Builder $query, array $filters): void
     {
@@ -67,7 +88,15 @@ class Product extends Model
             ->when($filters['category'] ?? null, fn (Builder $q, string $slug) => $q->whereRelation('categories', 'slug', $slug))
             ->when(isset($filters['min_price']), fn (Builder $q) => $q->where('price_cents', '>=', $filters['min_price']))
             ->when(isset($filters['max_price']), fn (Builder $q) => $q->where('price_cents', '<=', $filters['max_price']))
-            ->when($filters['in_stock'] ?? false, fn (Builder $q) => $q->whereHas('variants', fn (Builder $v) => $v->where('stock', '>', 0)));
+            ->when($filters['in_stock'] ?? false, fn (Builder $q) => $q->whereHas('variants', fn (Builder $v) => $v->where('stock', '>', 0)))
+            // Average of approved reviews >= N. A grouped subquery rather than HAVING on the
+            // withRating() alias: portable (SQLite needs GROUP BY before HAVING) and independent of it.
+            ->when($filters['min_rating'] ?? null, fn (Builder $q, int $min) => $q->whereIn('id', Review::query()
+                ->select('reviewable_id')
+                ->where('reviewable_type', $q->getModel()->getMorphClass())
+                ->approved()
+                ->groupBy('reviewable_id')
+                ->havingRaw('AVG(rating) >= ?', [$min])));
 
         match ($filters['sort'] ?? 'newest') {
             'price_asc' => $query->orderBy('price_cents'),

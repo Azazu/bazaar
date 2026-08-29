@@ -46,9 +46,17 @@ it('sorts by price', function () {
 });
 
 it('rejects unknown filter values', function () {
-    $this->getJson('/api/v1/products?sort=bogus&per_page=500')
+    $this->getJson('/api/v1/products?sort=bogus&per_page=500&min_rating=9')
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['sort', 'per_page']);
+        ->assertJsonValidationErrors(['sort', 'per_page', 'min_rating']);
+});
+
+it('accepts an upper price bound on its own but rejects an inverted range', function () {
+    $this->getJson('/api/v1/products?max_price=5000')->assertOk();
+
+    $this->getJson('/api/v1/products?min_price=9000&max_price=5000')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('max_price');
 });
 
 it('shows a published product with variants, store and rating', function () {
@@ -83,4 +91,57 @@ it('lists the category tree', function () {
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonCount(1, 'data.0.children');
+});
+
+it('searches products by title or description', function () {
+    $byTitle = Product::factory()->create(['title' => 'Blue Widget Deluxe', 'description' => 'Nothing to see']);
+    $byDescription = Product::factory()->create(['title' => 'Plain thing', 'description' => 'A widget for every home']);
+    Product::factory()->create(['title' => 'Gadget', 'description' => 'Unrelated']);
+    Product::factory()->draft()->create(['title' => 'Widget draft']);
+
+    $this->getJson('/api/v1/products?q=widget')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.total', 2)
+        ->assertJsonPath('data.*.id', fn (array $ids) => collect($ids)->sort()->values()->all()
+            === collect([$byTitle->id, $byDescription->id])->sort()->values()->all());
+});
+
+it('combines search with facets and keeps pagination exact', function () {
+    $category = Category::factory()->create();
+    $cheap = Product::factory()->create(['title' => 'Widget A', 'price_cents' => 1000]);
+    $pricey = Product::factory()->create(['title' => 'Widget B', 'price_cents' => 9000]);
+    $category->products()->attach([$cheap->id, $pricey->id]);
+    Product::factory()->create(['title' => 'Widget C', 'price_cents' => 1000]); // not in the category
+
+    $this->getJson("/api/v1/products?q=widget&category={$category->slug}&max_price=5000&per_page=1")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $cheap->id)
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('meta.last_page', 1);
+});
+
+it('keeps the search term in pagination links without Scout\'s internal param', function () {
+    Product::factory()->count(2)->create(['title' => 'Widget']);
+
+    $next = $this->getJson('/api/v1/products?q=widget&per_page=1')->assertOk()->json('links.next');
+
+    expect($next)->toContain('q=widget')->not->toContain('query=');
+});
+
+it('filters by minimum rating using approved reviews only', function () {
+    $good = Product::factory()->create();
+    Review::factory()->for($good, 'reviewable')->create(['rating' => 5]);
+    Review::factory()->for($good, 'reviewable')->create(['rating' => 4]);
+    $meh = Product::factory()->create();
+    Review::factory()->for($meh, 'reviewable')->create(['rating' => 2]);
+    $unapproved = Product::factory()->create();
+    Review::factory()->pending()->for($unapproved, 'reviewable')->create(['rating' => 5]);
+
+    $this->getJson('/api/v1/products?min_rating=4')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $good->id)
+        ->assertJsonPath('data.0.rating.average', 4.5);
 });

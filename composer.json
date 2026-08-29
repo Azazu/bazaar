@@ -16,6 +16,7 @@
         "filament/filament": "^4.12",
         "laravel/framework": "^13.8",
         "laravel/sanctum": "^4.0",
+        "laravel/scout": "^11.6",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^3.6.4",
         "livewire/volt": "^1.7.0",
