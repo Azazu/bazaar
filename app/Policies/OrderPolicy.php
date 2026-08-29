@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\Order;
+use App\Models\User;
+use App\States\Order\Pending;
+
+class OrderPolicy
+{
+    /** A buyer sees only their own orders. */
+    public function view(User $user, Order $order): bool
+    {
+        return $order->buyer_id === $user->id;
+    }
+
+    /** Only the buyer may pay, and only while the order is still pending. */
+    public function pay(User $user, Order $order): bool
+    {
+        return $this->view($user, $order) && $order->status instanceof Pending;
+    }
+}

@@ -2,6 +2,7 @@
 
 use App\Enums\ProductStatus;
 use App\Models\Product;
+use App\Models\Review;
 use App\Services\Cart\CartService;
 
 use function Livewire\Volt\{computed, mount, state};
@@ -20,7 +21,7 @@ $hasReviewed = computed(fn () => auth()->check()
     && $this->product->reviews()->where('user_id', auth()->id())->exists());
 $canReview = computed(fn () => auth()->check()
     && ! $this->hasReviewed
-    && $this->product->purchasedBy(auth()->user()));
+    && auth()->user()->can('create', [Review::class, $this->product]));
 
 $addToCart = function (int $variantId) {
     app(CartService::class)->add($variantId);
@@ -28,7 +29,7 @@ $addToCart = function (int $variantId) {
 };
 
 $submitReview = function () {
-    abort_unless(auth()->check() && $this->product->purchasedBy(auth()->user()), 403);
+    $this->authorize('create', [Review::class, $this->product]); // ReviewPolicy: buyers only
 
     $this->validate([
         'rating' => ['required', 'integer', 'min:1', 'max:5'],

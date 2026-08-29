@@ -9,7 +9,7 @@ use function Livewire\Volt\{mount, state};
 state(['order']);
 
 mount(function (Order $order) {
-    abort_unless($order->buyer_id === auth()->id(), 403); // a buyer sees only their own orders
+    $this->authorize('view', $order); // OrderPolicy: a buyer sees only their own orders
 
     $this->order = $order->load('items', 'coupon');
 });
