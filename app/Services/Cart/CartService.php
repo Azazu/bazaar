@@ -7,7 +7,11 @@ use Illuminate\Support\Collection;
 
 class CartService
 {
-    private const SESSION_KEY = 'cart';
+    /**
+     * The storage is resolved per request (see AppServiceProvider): a guest gets a session
+     * cart, an authenticated user — web or API — gets their account cart.
+     */
+    public function __construct(private readonly CartStorage $storage) {}
 
     /** Add a variant to the cart (or bump its quantity). */
     public function add(int $variantId, int $qty = 1): void
@@ -40,7 +44,24 @@ class CartService
 
     public function clear(): void
     {
-        session()->forget(self::SESSION_KEY);
+        $this->storage->forget();
+    }
+
+    /**
+     * Fold another cart's lines into this one (quantities add up).
+     * Used to carry a guest's session cart into their account on login.
+     *
+     * @param  array<int, int>  $lines  map of [variant_id => qty]
+     */
+    public function merge(array $lines): void
+    {
+        $cart = $this->raw();
+
+        foreach ($lines as $variantId => $qty) {
+            $cart[$variantId] = ($cart[$variantId] ?? 0) + $qty;
+        }
+
+        $this->save($cart);
     }
 
     /** Cart lines: each variant (with product) + quantity + line total. */
@@ -78,11 +99,11 @@ class CartService
     /** @return array<int,int> map of [variant_id => qty] */
     private function raw(): array
     {
-        return session()->get(self::SESSION_KEY, []);
+        return $this->storage->get();
     }
 
     private function save(array $cart): void
     {
-        session()->put(self::SESSION_KEY, $cart);
+        $this->storage->put($cart);
     }
 }
