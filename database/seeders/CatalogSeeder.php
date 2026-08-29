@@ -18,6 +18,7 @@ class CatalogSeeder extends Seeder
     public function run(): void
     {
         $categories = Category::factory(5)->create();
+        Category::flushCache(); // seeders run WithoutModelEvents, so the cache isn't invalidated for us
 
         // Vendors, each owning one active store.
         $stores = User::factory(4)
