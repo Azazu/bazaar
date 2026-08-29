@@ -1,6 +1,7 @@
 <?php
 
 use App\Events\OrderPaid;
+use App\Exceptions\OrderNotPayableException;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Services\Payment\PaymentService;
@@ -35,4 +36,13 @@ it('is idempotent when the same payment event arrives twice', function () {
         ->and(Payment::where('order_id', $order->id)->where('status', 'succeeded')->count())->toBe(1);
 
     Event::assertDispatched(OrderPaid::class, 1); // fired exactly once
+});
+
+it('refuses to start a payment for an order that is not pending', function () {
+    $order = Order::factory()->paid()->create();
+
+    expect(fn () => app(PaymentService::class)->start($order))
+        ->toThrow(OrderNotPayableException::class);
+
+    expect(Payment::where('order_id', $order->id)->count())->toBe(0);
 });

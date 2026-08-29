@@ -3,6 +3,7 @@
 namespace App\Services\Payment;
 
 use App\Events\OrderPaid;
+use App\Exceptions\OrderNotPayableException;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
@@ -16,9 +17,16 @@ class PaymentService
 
     /**
      * Start a payment for a pending order: create the provider intent and a local Payment row.
+     *
+     * The state check lives here, not only in OrderPolicy: policies can be bypassed
+     * (admins pass Gate::before), the domain invariant must not be.
      */
     public function start(Order $order): Payment
     {
+        if (! $order->status instanceof Pending) {
+            throw new OrderNotPayableException($order);
+        }
+
         return $order->payments()->create([
             'gateway' => 'fake',
             'transaction_id' => $this->gateway->createIntent($order),
