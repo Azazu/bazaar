@@ -11,6 +11,10 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!-- Forks real processes to prove row locking; skips unless run against MySQL (`make test-concurrency`). -->
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

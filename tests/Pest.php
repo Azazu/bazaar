@@ -3,7 +3,9 @@
 use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Models\User;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
@@ -20,6 +22,16 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
+
+/*
+| Concurrency tests fork real processes, so the data they race over must be committed and
+| visible outside the parent — RefreshDatabase's transaction would hide it. DatabaseMigrations
+| migrates fresh per test instead and commits. These tests need MySQL (row locks) and skip
+| elsewhere; see the `test-concurrency` make target.
+*/
+pest()->extend(TestCase::class)
+    ->use(DatabaseMigrations::class)
+    ->in('Concurrency');
 
 /*
 |--------------------------------------------------------------------------
@@ -58,4 +70,72 @@ function paidPurchase(User $user, ProductVariant $variant): void
         'unit_price_cents' => $variant->price_cents,
         'qty' => 1,
     ]);
+}
+
+/**
+ * Run $workers copies of $worker in forked processes, all starting at once, and report how
+ * they ended: ['ok' => n, 'rejected' => n, 'failed' => n].
+ *
+ * The worker returns true when its operation succeeded and false when the domain correctly
+ * refused it; anything thrown counts as 'failed'. Results travel back as exit codes, since a
+ * forked child shares nothing with the parent but the database.
+ *
+ * @param  Closure(int): bool  $worker
+ * @return array{ok: int, rejected: int, failed: int}
+ */
+function raceInParallel(int $workers, Closure $worker): array
+{
+    $pids = [];
+
+    foreach (range(1, $workers) as $i) {
+        $pid = pcntl_fork();
+
+        if ($pid === -1) {
+            throw new RuntimeException('Could not fork a worker process.');
+        }
+
+        if ($pid === 0) {
+            // Child: a fresh connection is mandatory — the inherited socket is shared with the parent.
+            DB::purge();
+            DB::reconnect();
+
+            try {
+                $code = $worker($i) ? 0 : 1;
+            } catch (Throwable) {
+                $code = 2;
+            }
+
+            exit($code);
+        }
+
+        $pids[] = $pid;
+    }
+
+    $tally = ['ok' => 0, 'rejected' => 0, 'failed' => 0];
+
+    foreach ($pids as $pid) {
+        pcntl_waitpid($pid, $status);
+
+        $key = match (pcntl_wexitstatus($status)) {
+            0 => 'ok',
+            1 => 'rejected',
+            default => 'failed',
+        };
+
+        $tally[$key]++;
+    }
+
+    return $tally;
+}
+
+/** Skip a test unless it can actually observe concurrency: real MySQL row locks plus pcntl. */
+function requiresDatabaseConcurrency(): void
+{
+    if (DB::connection()->getDriverName() !== 'mysql') {
+        test()->markTestSkipped('Needs MySQL row locks; the default suite runs on SQLite. Use `make test-concurrency`.');
+    }
+
+    if (! function_exists('pcntl_fork')) {
+        test()->markTestSkipped('Needs the pcntl extension to fork racing processes.');
+    }
 }

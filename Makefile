@@ -13,7 +13,7 @@ PHP := $(DC) exec -u www-data -e HOME=/tmp php
         sh sh-nginx mysql redis-cli \
         composer install update \
         artisan migrate migrate-fresh rollback seed tinker key-gen \
-        test pint pint-test stan \
+        test test-concurrency pint pint-test stan \
         db-reset clean nuke init
 
 help: ## Show this help
@@ -98,6 +98,13 @@ key-gen: ## Generate APP_KEY
 
 test: ## Run the test suite (Pest/PHPUnit)
 	$(PHP) php artisan test
+
+test-concurrency: ## Run the concurrency tests against MySQL (row locks; skipped by `make test`)
+	@$(DC) exec -e MYSQL_PWD=$(MYSQL_ROOT_PASSWORD) mysql mysql -uroot -e \
+	  "CREATE DATABASE IF NOT EXISTS \`$(MYSQL_DATABASE)_test\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
+	   GRANT ALL ON \`$(MYSQL_DATABASE)_test\`.* TO '$(MYSQL_USER)'@'%';"
+	$(DC) exec -u www-data -e HOME=/tmp -e DB_CONNECTION=mysql -e DB_DATABASE=$(MYSQL_DATABASE)_test php \
+	  php artisan test --testsuite=Concurrency
 
 pint: ## Format code with Laravel Pint
 	$(PHP) vendor/bin/pint
