@@ -9,10 +9,12 @@ $total = computed(fn () => app(CartService::class)->total());
 
 $updateQty = function (int $variantId, int $qty) {
     app(CartService::class)->update($variantId, $qty);
+    $this->dispatch('cart-updated');
 };
 
 $remove = function (int $variantId) {
     app(CartService::class)->remove($variantId);
+    $this->dispatch('cart-updated');
 };
 
 ?>

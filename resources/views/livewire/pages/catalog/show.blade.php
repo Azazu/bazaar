@@ -25,6 +25,7 @@ $canReview = computed(fn () => auth()->check()
 $addToCart = function (int $variantId) {
     app(CartService::class)->add($variantId);
     $this->justAdded = $variantId;
+    $this->dispatch('cart-updated'); // header badge listens
 };
 
 $submitReview = function () {
@@ -95,9 +96,9 @@ $submitReview = function () {
                                         class="text-sm px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">
                                     {{ __('Add to cart') }}
                                 </button>
-                                @if ($justAdded === $variant->id)
-                                    <span class="text-green-600 text-sm">{{ __('Added') }}</span>
-                                @endif
+                                {{-- Fixed width so the label never shifts the price and button --}}
+
+                                <span class="inline-block w-12 text-green-600 text-sm">{{ $justAdded === $variant->id ? __('Added') : '' }}</span>
                             @else
                                 <span class="text-gray-400 text-sm">{{ __('Out of stock') }}</span>
                             @endif
@@ -142,11 +143,17 @@ $submitReview = function () {
             @elseif ($this->canReview)
                 <form wire:submit="submitReview" class="mt-4 space-y-2 max-w-md">
                     <h3 class="font-medium">{{ __('Write a review') }}</h3>
-                    <select wire:model="rating" class="border-gray-300 rounded-md shadow-sm">
-                        @foreach ([5, 4, 3, 2, 1] as $r)
-                            <option value="{{ $r }}">{{ $r }} &#9733;</option>
+                    {{-- Stars: hover previews, click commits to the Livewire `rating` property --}}
+                    <div class="flex items-center gap-1" x-data="{ hover: 0 }" role="radiogroup" aria-label="{{ __('Rating') }}">
+                        @foreach ([1, 2, 3, 4, 5] as $r)
+                            <button type="button" @mouseenter="hover = {{ $r }}" @mouseleave="hover = 0"
+                                    @click="$wire.set('rating', {{ $r }})"
+                                    :class="(hover || $wire.rating) >= {{ $r }} ? 'text-yellow-400' : 'text-gray-300'"
+                                    class="text-2xl leading-none transition-colors" role="radio"
+                                    :aria-checked="$wire.rating === {{ $r }}" aria-label="{{ $r }}">&#9733;</button>
                         @endforeach
-                    </select>
+                        <span class="ms-2 text-sm text-gray-500" x-text="(hover || $wire.rating) + ' / 5'"></span>
+                    </div>
                     <textarea wire:model="body" rows="3" class="block w-full border-gray-300 rounded-md shadow-sm"
                               placeholder="{{ __('Your thoughts...') }}"></textarea>
                     <x-input-error :messages="$errors->get('body')" />
