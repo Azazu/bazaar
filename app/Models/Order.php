@@ -3,8 +3,16 @@
 namespace App\Models;
 
 use App\States\Order\Cancelled;
+use App\States\Order\Delivered;
 use App\States\Order\OrderState;
+use App\States\Order\Paid;
+use App\States\Order\Processing;
+use App\States\Order\Shipped;
 use App\States\SubOrder\Cancelled as SubOrderCancelled;
+use App\States\SubOrder\Delivered as SubOrderDelivered;
+use App\States\SubOrder\Paid as SubOrderPaid;
+use App\States\SubOrder\Refunded as SubOrderRefunded;
+use App\States\SubOrder\Shipped as SubOrderShipped;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -69,6 +77,39 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * Fulfilment is driven per sub-order by each vendor; the parent's state is derived:
+     * everything delivered → delivered, everything at least shipped → shipped, anything
+     * started → processing. Cancelled/refunded sub-orders don't count. Moves one legal
+     * step at a time so the state machine (and its listeners) see every transition.
+     */
+    public function syncStateFromSubOrders(): void
+    {
+        $this->load('subOrders');
+
+        $active = $this->subOrders->reject(fn (SubOrder $s) => $s->status instanceof SubOrderCancelled || $s->status instanceof SubOrderRefunded);
+        $ladder = [Paid::class, Processing::class, Shipped::class, Delivered::class];
+
+        if ($active->isEmpty() || ! in_array($this->status::class, [Paid::class, Processing::class, Shipped::class], true)) {
+            return;
+        }
+
+        $target = match (true) {
+            $active->every(fn (SubOrder $s) => $s->status instanceof SubOrderDelivered) => Delivered::class,
+            $active->every(fn (SubOrder $s) => $s->status instanceof SubOrderShipped || $s->status instanceof SubOrderDelivered) => Shipped::class,
+            $active->contains(fn (SubOrder $s) => ! $s->status instanceof SubOrderPaid) => Processing::class,
+            default => null,
+        };
+
+        if ($target === null) {
+            return;
+        }
+
+        while (array_search($this->status::class, $ladder, true) < array_search($target, $ladder, true)) {
+            $this->status->transitionTo($ladder[array_search($this->status::class, $ladder, true) + 1]);
+        }
     }
 
     /**
