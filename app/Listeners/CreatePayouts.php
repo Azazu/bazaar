@@ -4,11 +4,14 @@ namespace App\Listeners;
 
 use App\Events\OrderPaid;
 use App\Models\Payout;
+use App\Settings\MarketplaceSettings;
 use Brick\Math\RoundingMode;
 use Brick\Money\Money;
 
 class CreatePayouts
 {
+    public function __construct(private readonly MarketplaceSettings $settings) {}
+
     /**
      * On payment, record a payout per sub-order: the vendor's share is the sub-order
      * subtotal minus the platform commission. Money math goes through brick/money so
@@ -18,7 +21,7 @@ class CreatePayouts
     public function handle(OrderPaid $event): void
     {
         // String, not float — brick/math needs an exact decimal (a float multiplier is lossy).
-        $rate = (string) config('bazaar.commission_rate');
+        $rate = $this->settings->commission_rate;
         $currency = $event->order->currency;
 
         foreach ($event->order->subOrders as $subOrder) {
