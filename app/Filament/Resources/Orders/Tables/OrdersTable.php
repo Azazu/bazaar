@@ -7,8 +7,6 @@ use App\Services\Order\OrderService;
 use App\States\Order\Cancelled;
 use App\States\Order\Refunded;
 use Filament\Actions\Action;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -19,28 +17,46 @@ class OrdersTable
     {
         return $table
             ->columns([
+                TextColumn::make('id')
+                    ->label('#')
+                    ->sortable(),
                 TextColumn::make('buyer.name')
                     ->searchable(),
                 TextColumn::make('status')
-                    ->searchable(),
-                TextColumn::make('currency')
-                    ->searchable(),
-                TextColumn::make('subtotal_cents')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('shipping_cents')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('discount_cents')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('coupon.id')
-                    ->searchable(),
+                    ->badge()
+                    ->formatStateUsing(fn (Order $record): string => $record->status->label())
+                    ->color(fn (Order $record): string => match ($record->status->getValue()) {
+                        'paid', 'processing', 'shipped' => 'info',
+                        'delivered' => 'success',
+                        'cancelled', 'refunded' => 'danger',
+                        default => 'warning',
+                    }),
                 TextColumn::make('total_cents')
-                    ->numeric()
+                    ->label('Total')
+                    ->formatStateUsing(fn (int $state, Order $record): string => money($state, $record->currency))
+                    ->alignEnd()
                     ->sortable(),
+                TextColumn::make('subtotal_cents')
+                    ->label('Subtotal')
+                    ->formatStateUsing(fn (int $state, Order $record): string => money($state, $record->currency))
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('shipping_cents')
+                    ->label('Shipping')
+                    ->formatStateUsing(fn (int $state, Order $record): string => money($state, $record->currency))
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('discount_cents')
+                    ->label('Discount')
+                    ->formatStateUsing(fn (int $state, Order $record): string => money($state, $record->currency))
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('coupon.code')
+                    ->label('Coupon')
+                    ->placeholder('—'),
                 TextColumn::make('shipping_method')
-                    ->searchable(),
+                    ->badge()
+                    ->color('gray'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -69,10 +85,8 @@ class OrdersTable
                     ->action(fn (Order $record) => app(OrderService::class)->refund($record)),
                 EditAction::make(),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            // Orders are financial records: no bulk deletion; cancel/refund are the only "removals".
+            ->toolbarActions([])
+            ->defaultSort('id', 'desc');
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Coupons\Tables;
 
+use App\Enums\CouponType;
+use App\Models\Coupon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -20,10 +22,14 @@ class CouponsTable
                     ->badge()
                     ->searchable(),
                 TextColumn::make('value')
-                    ->numeric()
+                    ->label('Discount')
+                    ->formatStateUsing(fn (int $state, Coupon $record): string => $record->type === CouponType::Percent ? "{$state}%" : money($state))
+                    ->alignEnd()
                     ->sortable(),
                 TextColumn::make('min_subtotal_cents')
-                    ->numeric()
+                    ->label('Min. subtotal')
+                    ->formatStateUsing(fn (int $state): string => money($state))
+                    ->alignEnd()
                     ->sortable(),
                 TextColumn::make('starts_at')
                     ->dateTime()

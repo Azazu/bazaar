@@ -27,10 +27,10 @@ class ProductsTable
                 TextColumn::make('slug')
                     ->searchable(),
                 TextColumn::make('price_cents')
-                    ->numeric()
+                    ->label('Price')
+                    ->formatStateUsing(fn (int $state, Product $record): string => money($state, $record->currency))
+                    ->alignEnd()
                     ->sortable(),
-                TextColumn::make('currency')
-                    ->searchable(),
                 TextColumn::make('status')
                     ->badge()
                     ->searchable(),
