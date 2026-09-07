@@ -1,0 +1,19 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - database
+        - routes
+
+    level: 8
+
+    # Larastan reads model casts from the declared return type of casts() by default — for a
+    # plain `: array` that is not a constant array, so every cast (enums, dates, states) is
+    # silently dropped and `status` looks like a string. Parsing the method body fixes it.
+    parseModelCastsMethod: true
+
+    # Pest tests are closures bound at runtime — PHPStan gains little there without the Pest plugin.
+    excludePaths:
+        - tests

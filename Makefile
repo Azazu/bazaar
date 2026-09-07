@@ -113,7 +113,7 @@ pint-test: ## Check formatting without changing files
 	$(PHP) vendor/bin/pint --test
 
 stan: ## Static analysis (Larastan/PHPStan)
-	$(PHP) vendor/bin/phpstan analyse
+	$(PHP) vendor/bin/phpstan analyse --memory-limit=1G
 
 assets: ## Build front-end assets with Vite (run after adding Tailwind classes)
 	$(PHP) npm run build
