@@ -1,71 +1,143 @@
 # Bazaar
 
-A multi-vendor e-commerce marketplace built with Laravel. Sellers manage their own storefronts and inventory; buyers browse a unified catalog, check out, and pay — with orders split into per-seller sub-orders behind the scenes.
+[![CI](https://github.com/Azazu/bazaar/actions/workflows/ci.yml/badge.svg)](https://github.com/Azazu/bazaar/actions/workflows/ci.yml)
+
+A multi-vendor e-commerce marketplace built with Laravel 13. Sellers run their own storefronts and inventory; buyers browse one catalog, check out once and pay — behind the scenes the order is split into per-store sub-orders, each with its own fulfilment state and payout.
+
+The domain is deliberately the hard part of e-commerce: money, stock under concurrency, payment idempotency, order state machines, multi-tenant authorization. Each of those has a test that proves it — including tests that fork real processes against MySQL.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/catalog.png" alt="Catalog with search and facets"></td>
+    <td><img src="docs/screenshots/product.png" alt="Product page with variants and reviews"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/vendor-orders.png" alt="Vendor dashboard: incoming sub-orders"></td>
+    <td><img src="docs/screenshots/vendor-payouts.png" alt="Vendor dashboard: payouts and commission"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/order.png" alt="Paid order"></td>
+    <td><img src="docs/screenshots/admin-stores.png" alt="Filament admin: store moderation"></td>
+  </tr>
+</table>
+
+## What's inside
+
+| Area | |
+| --- | --- |
+| **Storefront** | Catalog with full-text search and facets (category, price range, rating, availability), product variants with their own SKU/price/stock, cart (guest session → account cart, merged on login), checkout with coupons, order history |
+| **Multi-vendor** | Stores with admin moderation, one checkout split into per-store sub-orders, vendor dashboard (incoming orders, products, payouts), platform commission with exact money math |
+| **Payments** | Gateway abstraction with a sandbox implementation, idempotent "payment succeeded" handling, stock decremented on payment inside the same transaction; cancellation and refunds return the money, restore stock and void vendor payouts |
+| **Reviews** | Polymorphic, verified buyers only, one per buyer, moderated in the admin panel |
+| **Admin** | Filament panel: store and review moderation, categories, coupons, users, orders |
+| **REST API** | `/api/v1` — Sanctum tokens, API Resources, Form Requests, rate limiting, pagination |
+
+## Engineering highlights
+
+- **Money is integers.** Amounts are stored in minor units and only ever manipulated through `brick/money`; commission rounding reconciles to the cent. → [`app/Listeners/CreatePayouts.php`](app/Listeners/CreatePayouts.php), [`app/Support/helpers.php`](app/Support/helpers.php)
+- **No overselling.** Stock is decremented inside the payment transaction under `SELECT … FOR UPDATE`; a shortfall rolls the payment back and the order stays `pending`. Proven by forking 10 buyers racing for the last unit on a real MySQL. → [`app/Services/Stock/StockManager.php`](app/Services/Stock/StockManager.php), [`tests/Concurrency/StockConcurrencyTest.php`](tests/Concurrency/StockConcurrencyTest.php)
+- **Idempotent payment confirmation.** A unique event ledger, the payment's own status and the state machine each guard the transition — including eight simultaneous deliveries of the same event. → [`app/Services/Payment/PaymentService.php`](app/Services/Payment/PaymentService.php), [`tests/Concurrency/PaymentWebhookConcurrencyTest.php`](tests/Concurrency/PaymentWebhookConcurrencyTest.php)
+- **State machines, not status strings.** `spatie/laravel-model-states` for orders and sub-orders; illegal transitions throw (`409` on the API). Cancellation and refunds move the order, its sub-orders, stock and payouts together in one transaction. Domain invariants live in services — admins bypass policies, never invariants. → [`app/Services/Order/OrderService.php`](app/Services/Order/OrderService.php)
+- **One checkout, N sub-orders, atomically**, with price and title snapshots per line. → [`app/Services/Checkout/CheckoutService.php`](app/Services/Checkout/CheckoutService.php)
+- **Authorization as a matrix.** Policies for orders, sub-orders and reviews, roles via `spatie/laravel-permission`, tested end to end on both the web and the API. → [`tests/Feature/AuthorizationTest.php`](tests/Feature/AuthorizationTest.php)
+- **Events drive side effects.** `OrderPaid` fans out to stock, sub-order states, payouts and a queued buyer notification.
+- **Pluggable cart storage.** Session for guests, a Redis account cart for users (shared by the web and the API), guest cart merged into the account on login. → [`app/Services/Cart`](app/Services/Cart)
+- **Static analysis at PHPStan level 8** (Larastan), Pint, and a CI pipeline with a dedicated MySQL job for the concurrency suite.
+
+## How an order flows
+
+```mermaid
+flowchart LR
+    Cart -->|CheckoutService, one transaction| Order[Order: pending]
+    Order --> SO1[SubOrder · store A]
+    Order --> SO2[SubOrder · store B]
+    Order -->|PaymentService.start| Intent[Payment intent]
+    Intent -->|provider event, idempotent| Paid[Order: paid]
+    Paid -->|OrderPaid| Stock[Decrement stock<br/>row-locked, same transaction]
+    Paid -->|OrderPaid| States[Sub-orders → paid]
+    Paid -->|OrderPaid| Payouts[Payouts = subtotal − commission]
+    Paid -->|OrderPaid| Mail[Buyer notification<br/>queued]
+    States --> Vendor[Vendor: processing → shipped → delivered]
+```
+
+## REST API
+
+Stateless, token-authenticated, JSON errors, `60 req/min` per client (`5/min` for token issuance).
+
+| Method | Endpoint | Auth |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/tokens` · `DELETE /api/v1/auth/tokens/current` · `GET /api/v1/me` | — / token |
+| `GET` | `/api/v1/categories` · `/api/v1/products?q=&category=&min_price=&max_price=&in_stock=&min_rating=&sort=` · `/api/v1/products/{slug}` · `/api/v1/products/{slug}/reviews` | — |
+| `GET/POST/PATCH/DELETE` | `/api/v1/cart` · `/api/v1/cart/items` · `/api/v1/cart/items/{variant}` | token |
+| `POST` | `/api/v1/checkout` · `/api/v1/orders/{id}/pay` · `/api/v1/orders/{id}/cancel` | token |
+| `GET` | `/api/v1/orders` · `/api/v1/orders/{id}` | token |
+| `POST` | `/api/v1/products/{slug}/reviews` | token |
+
+```bash
+TOKEN=$(curl -s -X POST localhost:8080/api/v1/auth/tokens -H 'Content-Type: application/json' \
+  -d '{"email":"admin@bazaar.test","password":"password","device_name":"cli"}' | jq -r .token)
+
+curl -s 'localhost:8080/api/v1/products?q=lamp&in_stock=1&sort=price_asc' | jq '.data[0]'
+
+curl -s -X POST localhost:8080/api/v1/cart/items -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"variant_id":1,"qty":2}' | jq .data
+```
 
 ## Tech stack
 
 | Layer | Choice |
 | --- | --- |
-| Framework | Laravel 13 (PHP 8.4) |
-| Database | MySQL 8 |
-| Cache / queue / session | Redis 7 |
-| Payments | Stripe (test mode) |
-| Search | Laravel Scout |
-| Testing | Pest |
-| Quality | Pint, PHPStan (Larastan) |
-| Runtime | Docker (nginx + php-fpm + MySQL + Redis) |
-
-## Highlights
-
-- **Money handled correctly** — amounts stored as integer minor units, never floats; all financial operations wrapped in DB transactions.
-- **Concurrency-safe stock** — inventory is decremented under row locks (`lockForUpdate`) to prevent overselling on parallel orders.
-- **Order state machine** — controlled transitions (`pending → paid → processing → shipped → delivered`, plus `cancelled` / `refunded`).
-- **Idempotent payment webhooks** — replays never double-apply their effects.
-- **Multi-vendor orders** — a single checkout fans out into per-seller sub-orders.
-- **Roles & policies** — buyer / vendor / admin with fine-grained authorization.
-- **REST API** — token auth (Sanctum), API Resources, Form Request validation, rate limiting.
+| Framework | Laravel 13, PHP 8.4 |
+| UI | Livewire 3 + Volt (storefront, vendor area), Filament 4 (admin), Tailwind |
+| Data | MySQL 8, Redis 7 (cache, queue, session, account carts) |
+| Search | Laravel Scout (database driver; Meilisearch-ready) |
+| Domain packages | `brick/money`, `spatie/laravel-model-states`, `spatie/laravel-permission`, `laravel/sanctum` |
+| Quality | Pest, Larastan (PHPStan level 8), Pint, GitHub Actions, Dependabot |
+| Runtime | Docker: nginx → php-fpm → MySQL + Redis (+ Mailpit for outgoing mail) |
 
 ## Getting started
 
-**Requirements:** Docker and Docker Compose.
+Requires Docker and Docker Compose.
 
 ```bash
-git clone git@github.com:Azazu/bazaar.git
-cd bazaar
+git clone git@github.com:Azazu/bazaar.git && cd bazaar
 cp .env.example .env
-make init        # build images, start the stack, install deps, generate key, migrate
+make init      # build images, start the stack, install dependencies, generate the key, migrate
+make seed      # demo catalog, vendors, reviews, coupons
+make assets    # build the front-end
 ```
 
-The app is then available at **http://localhost:8080**.
+| | |
+| --- | --- |
+| Storefront | http://localhost:8080 |
+| Admin panel | http://localhost:8080/admin — `admin@bazaar.test` / `password` |
+| Vendor dashboard | log in as `vendor1@bazaar.test` … `vendor4@bazaar.test` / `password`, then **Vendor** in the header |
+| Outgoing mail | http://localhost:8080 → Mailpit at http://localhost:8025 |
 
-## Common commands
-
-```bash
-make up / make down     # start / stop the stack
-make sh                 # shell into the php container
-make artisan <cmd>      # run an artisan command
-make migrate            # apply migrations
-make test               # run the test suite (Pest)
-make pint               # format code
-make stan               # static analysis
-```
-
-Run `make help` for the full list.
+Payments run against a sandbox gateway — no keys, no real charges. Run `make help` for the full list of targets.
 
 ## Testing
 
 ```bash
-make test
+make test               # Pest: unit + feature suites on in-memory SQLite (~3s)
+make test-concurrency   # forks real processes against MySQL to prove row locking
 ```
 
-Critical paths are covered by feature tests: checkout, payment-webhook handling, stock decrement without overselling (including concurrent orders), order state transitions, and access control.
+The default suite covers checkout, payment confirmation and its idempotency, stock decrement and rollback, cancellation and refunds with stock restore, order and sub-order state transitions, coupons, payouts, the authorization matrix, and every API endpoint. The concurrency suite is separate on purpose: SQLite has no row locks to test, so it runs against a MySQL service — locally via `make test-concurrency`, in CI in its own job.
+
+## Quality
+
+`make pint` formats, `make stan` runs Larastan at PHPStan level 8. CI runs four independent jobs on every push and pull request: formatting + static analysis + `composer audit`, the default test suite, the MySQL concurrency suite, and the front-end build. Dependabot keeps Composer, npm and Actions current.
 
 ## Roadmap
 
-- [ ] Catalog, product variants, categories, session cart
-- [ ] Checkout, Stripe payments, order state machine, stock, reviews, coupons
-- [ ] Multi-vendor: stores, sub-orders, seller dashboard, payouts, admin moderation
-- [ ] REST API, faceted search, full test coverage, CI
+- [x] Catalog, variants, categories, cart
+- [x] Checkout, sandbox payments, order state machine, stock, reviews, coupons
+- [x] Multi-vendor: stores, sub-orders, vendor dashboard, payouts, admin moderation
+- [x] REST API, search and facets, concurrency tests, Larastan, CI
+- [ ] Stripe test-mode gateway (Stripe.js, signed webhooks) behind the existing `PaymentGateway` contract
+- [ ] Product images (Intervention Image), vendor and status-change notifications
+- [ ] Meilisearch driver, Stripe Connect payouts
 
 ## License
 
