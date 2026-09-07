@@ -13,7 +13,9 @@
     "require": {
         "php": "^8.3",
         "brick/money": "^0.14.0",
+        "dedoc/scramble": "^0.13.42",
         "filament/filament": "^4.12",
+        "filament/spatie-laravel-settings-plugin": "^4.0",
         "intervention/image": "^4.3",
         "laravel/framework": "^13.8",
         "laravel/sanctum": "^4.0",
@@ -23,6 +25,7 @@
         "livewire/volt": "^1.7.0",
         "spatie/laravel-model-states": "^2.14",
         "spatie/laravel-permission": "^8.3",
+        "spatie/laravel-settings": "^3.9",
         "stripe/stripe-php": "^21.3"
     },
     "require-dev": {
