@@ -27,7 +27,7 @@ The domain is deliberately the hard part of e-commerce: money, stock under concu
 | --- | --- |
 | **Storefront** | Catalog with full-text search and facets (category, price range, rating, availability), product variants with their own SKU/price/stock, cart (guest session → account cart, merged on login), checkout with coupons, order history |
 | **Multi-vendor** | Stores with admin moderation, one checkout split into per-store sub-orders, vendor dashboard (incoming orders, products, payouts), platform commission with exact money math |
-| **Payments** | Gateway abstraction with a sandbox implementation, idempotent "payment succeeded" handling, stock decremented on payment inside the same transaction; cancellation and refunds return the money, restore stock and void vendor payouts |
+| **Payments** | Stripe in test mode (PaymentIntents, Payment Element, signed webhooks, refunds) behind a gateway contract with a keyless sandbox implementation; idempotent "payment succeeded" handling; stock decremented on payment inside the same transaction; cancellation and refunds return the money, restore stock and void vendor payouts |
 | **Reviews** | Polymorphic, verified buyers only, one per buyer, moderated in the admin panel |
 | **Admin** | Filament panel: store and review moderation, categories, coupons, users, orders |
 | **REST API** | `/api/v1` — Sanctum tokens, API Resources, Form Requests, rate limiting, pagination |
@@ -36,7 +36,8 @@ The domain is deliberately the hard part of e-commerce: money, stock under concu
 
 - **Money is integers.** Amounts are stored in minor units and only ever manipulated through `brick/money`; commission rounding reconciles to the cent. → [`app/Listeners/CreatePayouts.php`](app/Listeners/CreatePayouts.php), [`app/Support/helpers.php`](app/Support/helpers.php)
 - **No overselling.** Stock is decremented inside the payment transaction under `SELECT … FOR UPDATE`; a shortfall rolls the payment back and the order stays `pending`. Proven by forking 10 buyers racing for the last unit on a real MySQL. → [`app/Services/Stock/StockManager.php`](app/Services/Stock/StockManager.php), [`tests/Concurrency/StockConcurrencyTest.php`](tests/Concurrency/StockConcurrencyTest.php)
-- **Idempotent payment confirmation.** A unique event ledger, the payment's own status and the state machine each guard the transition — including eight simultaneous deliveries of the same event. → [`app/Services/Payment/PaymentService.php`](app/Services/Payment/PaymentService.php), [`tests/Concurrency/PaymentWebhookConcurrencyTest.php`](tests/Concurrency/PaymentWebhookConcurrencyTest.php)
+- **Idempotent payment confirmation.** Only the signed Stripe webhook marks an order paid — never the redirect back. A unique event ledger, the payment's own status and the state machine each guard the transition, including eight simultaneous deliveries of the same event. → [`app/Http/Controllers/StripeWebhookController.php`](app/Http/Controllers/StripeWebhookController.php), [`app/Services/Payment/PaymentService.php`](app/Services/Payment/PaymentService.php), [`tests/Concurrency/PaymentWebhookConcurrencyTest.php`](tests/Concurrency/PaymentWebhookConcurrencyTest.php)
+- **Swappable payment gateway.** `PaymentGateway` has a Stripe implementation (idempotency keys, minor units, refunds via the intent) and a keyless sandbox one; `PAYMENT_GATEWAY` picks it, nothing else changes. Gateway tests run against a recording HTTP stub, not the network. → [`app/Services/Payment`](app/Services/Payment)
 - **State machines, not status strings.** `spatie/laravel-model-states` for orders and sub-orders; illegal transitions throw (`409` on the API). Cancellation and refunds move the order, its sub-orders, stock and payouts together in one transaction. Domain invariants live in services — admins bypass policies, never invariants. → [`app/Services/Order/OrderService.php`](app/Services/Order/OrderService.php)
 - **One checkout, N sub-orders, atomically**, with price and title snapshots per line. → [`app/Services/Checkout/CheckoutService.php`](app/Services/Checkout/CheckoutService.php)
 - **Authorization as a matrix.** Policies for orders, sub-orders and reviews, roles via `spatie/laravel-permission`, tested end to end on both the web and the API. → [`tests/Feature/AuthorizationTest.php`](tests/Feature/AuthorizationTest.php)
@@ -51,8 +52,9 @@ flowchart LR
     Cart -->|CheckoutService, one transaction| Order[Order: pending]
     Order --> SO1[SubOrder · store A]
     Order --> SO2[SubOrder · store B]
-    Order -->|PaymentService.start| Intent[Payment intent]
-    Intent -->|provider event, idempotent| Paid[Order: paid]
+    Order -->|PaymentService.start| Intent[Stripe PaymentIntent]
+    Intent -->|Payment Element confirms| Stripe[Stripe]
+    Stripe -->|signed webhook, idempotent| Paid[Order: paid]
     Paid -->|OrderPaid| Stock[Decrement stock<br/>row-locked, same transaction]
     Paid -->|OrderPaid| States[Sub-orders → paid]
     Paid -->|OrderPaid| Payouts[Payouts = subtotal − commission]
@@ -62,7 +64,7 @@ flowchart LR
 
 ## REST API
 
-Stateless, token-authenticated, JSON errors, `60 req/min` per client (`5/min` for token issuance).
+Stateless, token-authenticated, JSON errors, `60 req/min` per client (`5/min` for token issuance). `POST /orders/{id}/pay` returns the Stripe `client_secret`; the client confirms with the Stripe SDK and polls the order until the webhook marks it paid.
 
 | Method | Endpoint | Auth |
 | --- | --- | --- |
@@ -88,6 +90,7 @@ curl -s -X POST localhost:8080/api/v1/cart/items -H "Authorization: Bearer $TOKE
 | Layer | Choice |
 | --- | --- |
 | Framework | Laravel 13, PHP 8.4 |
+| Payments | Stripe (test mode) via `stripe/stripe-php`, Payment Element, webhooks |
 | UI | Livewire 3 + Volt (storefront, vendor area), Filament 4 (admin), Tailwind |
 | Data | MySQL 8, Redis 7 (cache, queue, session, account carts) |
 | Search | Laravel Scout (database driver; Meilisearch-ready) |
@@ -114,7 +117,7 @@ make assets    # build the front-end
 | Vendor dashboard | log in as `vendor1@bazaar.test` … `vendor4@bazaar.test` / `password`, then **Vendor** in the header |
 | Outgoing mail | http://localhost:8080 → Mailpit at http://localhost:8025 |
 
-Payments run against a sandbox gateway — no keys, no real charges. Run `make help` for the full list of targets.
+Payments default to a keyless sandbox gateway. To exercise the real Stripe flow in test mode, set `PAYMENT_GATEWAY=stripe` plus your `pk_test_`/`sk_test_` keys in `.env`, forward webhooks with `stripe listen --forward-to localhost:8080/stripe/webhook` (it prints the `STRIPE_WEBHOOK_SECRET`), and pay with card `4242 4242 4242 4242`. Run `make help` for the full list of targets.
 
 ## Testing
 
@@ -123,7 +126,7 @@ make test               # Pest: unit + feature suites on in-memory SQLite (~3s)
 make test-concurrency   # forks real processes against MySQL to prove row locking
 ```
 
-The default suite covers checkout, payment confirmation and its idempotency, stock decrement and rollback, cancellation and refunds with stock restore, order and sub-order state transitions, coupons, payouts, the authorization matrix, and every API endpoint. The concurrency suite is separate on purpose: SQLite has no row locks to test, so it runs against a MySQL service — locally via `make test-concurrency`, in CI in its own job.
+The default suite covers checkout, Stripe webhook signature verification, payment confirmation and its idempotency, stock decrement and rollback, cancellation and refunds with stock restore, order and sub-order state transitions, coupons, payouts, the authorization matrix, and every API endpoint. The concurrency suite is separate on purpose: SQLite has no row locks to test, so it runs against a MySQL service — locally via `make test-concurrency`, in CI in its own job.
 
 ## Quality
 
@@ -135,9 +138,9 @@ The default suite covers checkout, payment confirmation and its idempotency, sto
 - [x] Checkout, sandbox payments, order state machine, stock, reviews, coupons
 - [x] Multi-vendor: stores, sub-orders, vendor dashboard, payouts, admin moderation
 - [x] REST API, search and facets, concurrency tests, Larastan, CI
-- [ ] Stripe test-mode gateway (Stripe.js, signed webhooks) behind the existing `PaymentGateway` contract
+- [x] Stripe test-mode gateway (Payment Element, signed webhooks, refunds) behind the `PaymentGateway` contract
 - [ ] Product images (Intervention Image), vendor and status-change notifications
-- [ ] Meilisearch driver, Stripe Connect payouts
+- [ ] Meilisearch driver, Stripe Connect payouts, automatic refund when stock runs out between checkout and payment
 
 ## License
 
