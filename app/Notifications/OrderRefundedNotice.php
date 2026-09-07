@@ -36,6 +36,10 @@ class OrderRefundedNotice extends Notification implements ShouldQueue
     /** @return array<string, mixed> */
     public function toArray(object $notifiable): array
     {
-        return ['order_id' => $this->order->id];
+        return [
+            'message' => "Order #{$this->order->id} was refunded",
+            'url' => route('orders.show', $this->order),
+            'order_id' => $this->order->id,
+        ];
     }
 }

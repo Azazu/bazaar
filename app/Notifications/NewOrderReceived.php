@@ -45,6 +45,8 @@ class NewOrderReceived extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
+            'message' => "New order #{$this->subOrder->order_id}: ".money($this->subOrder->subtotal_cents).' for your store',
+            'url' => route('vendor.orders'),
             'order_id' => $this->subOrder->order_id,
             'sub_order_id' => $this->subOrder->id,
             'subtotal_cents' => $this->subOrder->subtotal_cents,

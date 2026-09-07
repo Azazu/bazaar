@@ -40,6 +40,11 @@ class OrderCancelledNotice extends Notification implements ShouldQueue
     /** @return array<string, mixed> */
     public function toArray(object $notifiable): array
     {
-        return ['order_id' => $this->order->id, 'refunded' => $this->refunded];
+        return [
+            'message' => "Order #{$this->order->id} was cancelled".($this->refunded ? ' and refunded' : ''),
+            'url' => route('orders.show', $this->order),
+            'order_id' => $this->order->id,
+            'refunded' => $this->refunded,
+        ];
     }
 }

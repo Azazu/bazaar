@@ -45,6 +45,8 @@ class SubOrderStatusUpdated extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
+            'message' => "Order #{$this->subOrder->order_id}: items from ".($this->subOrder->store->name ?? 'the seller').' are '.strtolower($this->status->label()),
+            'url' => route('orders.show', $this->subOrder->order_id),
             'order_id' => $this->subOrder->order_id,
             'sub_order_id' => $this->subOrder->id,
             'status' => $this->status->getValue(),

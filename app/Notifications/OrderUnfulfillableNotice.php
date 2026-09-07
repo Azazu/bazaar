@@ -36,6 +36,11 @@ class OrderUnfulfillableNotice extends Notification implements ShouldQueue
     /** @return array<string, mixed> */
     public function toArray(object $notifiable): array
     {
-        return ['order_id' => $this->order->id, 'sold_out_item' => $this->soldOutItem];
+        return [
+            'message' => "Order #{$this->order->id} could not be fulfilled — {$this->soldOutItem} sold out; refunded",
+            'url' => route('orders.show', $this->order),
+            'order_id' => $this->order->id,
+            'sold_out_item' => $this->soldOutItem,
+        ];
     }
 }

@@ -17,6 +17,7 @@
             <nav class="flex items-center gap-4 text-sm">
                 <livewire:cart-badge />
                 @auth
+                    <livewire:notification-bell />
                     <livewire:user-menu />
                 @else
                     <a href="{{ route('login') }}" class="text-gray-600 hover:text-gray-900">{{ __('Log in') }}</a>

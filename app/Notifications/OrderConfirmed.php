@@ -39,6 +39,8 @@ class OrderConfirmed extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
+            'message' => "Order #{$this->order->id} is paid — thank you!",
+            'url' => route('orders.show', $this->order),
             'order_id' => $this->order->id,
             'total_cents' => $this->order->total_cents,
             'currency' => $this->order->currency,
