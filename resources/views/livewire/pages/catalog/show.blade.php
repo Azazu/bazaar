@@ -54,56 +54,60 @@ $submitReview = function () {
     <a href="{{ route('catalog.index') }}" class="text-sm text-gray-500">&larr; {{ __('Catalog') }}</a>
     <h1 class="text-2xl font-bold mt-2">{{ $product->title }}</h1>
 
-    @if ($product->images->isNotEmpty())
-        {{-- Gallery: big picture + thumbnails; purely client-side, no round trips --}}
-        <div class="mt-4 grid gap-3 md:grid-cols-[1fr_5rem]" x-data="{ active: 0 }" wire:ignore>
-            <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                @foreach ($product->images as $image)
-                    <img x-show="active === {{ $loop->index }}" src="{{ $image->url('large') }}"
-                         alt="{{ $product->title }}" class="w-full h-full object-contain" @if (! $loop->first) x-cloak @endif>
-                @endforeach
-            </div>
-            @if ($product->images->count() > 1)
-                <div class="flex md:flex-col gap-2">
+    <div class="mt-4 md:flex md:gap-8 md:items-start">
+        @if ($product->images->isNotEmpty())
+            {{-- Gallery: compact column, big picture + thumbnails; purely client-side --}}
+            <div class="md:w-80 shrink-0" x-data="{ active: 0 }" wire:ignore>
+                <div class="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
                     @foreach ($product->images as $image)
-                        <button type="button" @click="active = {{ $loop->index }}"
-                                :class="active === {{ $loop->index }} ? 'ring-2 ring-indigo-500' : 'opacity-70 hover:opacity-100'"
-                                class="w-20 h-20 rounded overflow-hidden bg-gray-100">
-                            <img src="{{ $image->url('thumb') }}" alt="" class="w-full h-full object-cover">
-                        </button>
+                        <img x-show="active === {{ $loop->index }}" src="{{ $image->url('large') }}"
+                             alt="{{ $product->title }}" class="w-full h-full object-contain" @if (! $loop->first) x-cloak @endif>
                     @endforeach
                 </div>
-            @endif
+                @if ($product->images->count() > 1)
+                    <div class="flex gap-2 mt-2">
+                        @foreach ($product->images as $image)
+                            <button type="button" @click="active = {{ $loop->index }}"
+                                    :class="active === {{ $loop->index }} ? 'ring-2 ring-indigo-500' : 'opacity-70 hover:opacity-100'"
+                                    class="w-14 h-14 rounded overflow-hidden bg-gray-100">
+                                <img src="{{ $image->url('thumb') }}" alt="" class="w-full h-full object-cover">
+                            </button>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        @endif
+
+        <div class="flex-1 mt-6 md:mt-0">
+            <p class="text-gray-600">{{ $product->description }}</p>
+
+            <h2 class="font-semibold mt-6 mb-2">{{ __('Variants') }}</h2>
+            <ul class="divide-y border rounded-lg bg-white">
+                @foreach ($product->variants as $variant)
+                    <li class="flex items-center justify-between p-3" wire:key="variant-{{ $variant->id }}">
+                        <span>{{ $variant->name }}
+                            <span class="text-gray-400 text-sm">({{ $variant->sku }})</span></span>
+
+                        <div class="flex items-center gap-3">
+                            <span>{{ money($variant->price_cents) }}</span>
+
+                            @if ($variant->stock > 0)
+                                <button wire:click="addToCart({{ $variant->id }})"
+                                        class="text-sm px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">
+                                    {{ __('Add to cart') }}
+                                </button>
+                                @if ($justAdded === $variant->id)
+                                    <span class="text-green-600 text-sm">{{ __('Added') }}</span>
+                                @endif
+                            @else
+                                <span class="text-gray-400 text-sm">{{ __('Out of stock') }}</span>
+                            @endif
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
         </div>
-    @endif
-
-    <p class="text-gray-600 mt-4">{{ $product->description }}</p>
-
-    <h2 class="font-semibold mt-6 mb-2">{{ __('Variants') }}</h2>
-    <ul class="divide-y border rounded-lg bg-white">
-        @foreach ($product->variants as $variant)
-            <li class="flex items-center justify-between p-3" wire:key="variant-{{ $variant->id }}">
-                <span>{{ $variant->name }}
-                    <span class="text-gray-400 text-sm">({{ $variant->sku }})</span></span>
-
-                <div class="flex items-center gap-3">
-                    <span>{{ money($variant->price_cents) }}</span>
-
-                    @if ($variant->stock > 0)
-                        <button wire:click="addToCart({{ $variant->id }})"
-                                class="text-sm px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">
-                            {{ __('Add to cart') }}
-                        </button>
-                        @if ($justAdded === $variant->id)
-                            <span class="text-green-600 text-sm">{{ __('Added') }}</span>
-                        @endif
-                    @else
-                        <span class="text-gray-400 text-sm">{{ __('Out of stock') }}</span>
-                    @endif
-                </div>
-            </li>
-        @endforeach
-    </ul>
+    </div>
 
     {{-- Reviews --}}
     <div class="mt-10">
