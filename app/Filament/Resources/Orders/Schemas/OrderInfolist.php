@@ -12,6 +12,7 @@ use Filament\Infolists\Components\RepeatableEntry\TableColumn;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Str;
 
 /** Read-only view of an order: it is a financial record and is never edited by hand. */
 class OrderInfolist
@@ -117,7 +118,7 @@ class OrderInfolist
                             ->schema([
                                 TextEntry::make('gateway'),
                                 TextEntry::make('transaction_id')->copyable(),
-                                TextEntry::make('status')->badge()->color('gray'),
+                                TextEntry::make('status')->badge()->color('gray')->formatStateUsing(fn (string $state): string => Str::headline($state)),
                                 TextEntry::make('amount_cents')
                                     ->formatStateUsing(fn (int $state, Payment $record): string => money($state, $record->currency)),
                             ]),

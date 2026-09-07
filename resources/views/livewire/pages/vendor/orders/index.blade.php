@@ -1,12 +1,17 @@
 <?php
 
 use App\Models\SubOrder;
+use App\Services\Order\SubOrderService;
 use App\States\SubOrder\Delivered;
 use App\States\SubOrder\Paid;
 use App\States\SubOrder\Processing;
 use App\States\SubOrder\Shipped;
 
-use function Livewire\Volt\{computed};
+use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
+
+use function Livewire\Volt\{computed, state};
+
+state(['error' => null]);
 
 $subOrders = computed(function () {
     $store = auth()->user()->store;
@@ -17,8 +22,11 @@ $subOrders = computed(function () {
 });
 
 // Advance a sub-order to its next state. Policy-gated: only the store owner may do it.
+// SubOrderService decides on a locked copy, so a buyer cancelling at the same moment can't
+// be overwritten; the vendor is told the order went away instead.
 $advance = function (SubOrder $subOrder) {
     $this->authorize('update', $subOrder);
+    $this->error = null;
 
     $next = match (true) {
         $subOrder->status instanceof Paid => Processing::class,
@@ -27,8 +35,22 @@ $advance = function (SubOrder $subOrder) {
         default => null,
     };
 
-    if ($next !== null) {
-        $subOrder->status->transitionTo($next);
+    $cancelledUnderneath = fn () => $this->error = __('Order #:id can no longer be advanced — it was cancelled or refunded in the meantime.', ['id' => $subOrder->order_id]);
+
+    // The list the vendor clicked on may be stale: the sub-order is re-read here (route binding),
+    // so a reversal that already landed shows up as "no next step" rather than as a refused move.
+    if ($next === null) {
+        if (! $subOrder->status instanceof Delivered) {
+            $cancelledUnderneath();
+        }
+
+        return;
+    }
+
+    try {
+        app(SubOrderService::class)->advance($subOrder, $next);
+    } catch (CouldNotPerformTransition) {
+        $cancelledUnderneath(); // the reversal won the race by a hair
     }
 };
 
@@ -36,6 +58,10 @@ $advance = function (SubOrder $subOrder) {
 
 <div class="max-w-5xl mx-auto p-6">
     <x-vendor-nav :title="__('Incoming orders')" />
+
+    @if ($error)
+        <p class="mb-4 rounded bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 text-sm">{{ $error }}</p>
+    @endif
 
     @if ($this->subOrders->isEmpty())
         <p class="text-gray-500">{{ __('No orders yet.') }}</p>

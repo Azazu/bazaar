@@ -12,18 +12,26 @@ use App\States\Order\Paid;
 use App\States\Order\Refunded;
 use App\States\SubOrder\Cancelled as SubOrderCancelled;
 use App\States\SubOrder\Refunded as SubOrderRefunded;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
 use Spatie\ModelStates\State;
 
 /**
- * Order-level transitions that move money, stock and the sub-orders together.
- * The state machine decides whether a transition is legal; this decides what it entails.
+ * Order-level reversals — cancel and refund — that move money, stock and the sub-orders
+ * together. The state machine decides whether a transition is legal; this decides what it
+ * entails and makes sure it happens exactly once.
  *
- * Both operations: check the transition first, return the money at the provider
- * (a network call — kept outside the DB transaction), then in one transaction change
- * the order and its sub-orders and fire the event whose sync listeners restore stock
- * (row-locked) and void payouts. Either all of the local changes land, or none.
+ * Exactly-once comes from a claim under row locks: the order and all its sub-orders are
+ * locked, the precondition is re-checked on that locked snapshot, and only then does the
+ * transition happen, in the same transaction as restocking (row-locked itself), voiding the
+ * payouts and recording that the money is owed back. A second caller — a double click, a
+ * parallel admin, or a vendor advancing a sub-order (SubOrderService takes the same locks in
+ * the same order) — waits for the lock and then sees a state that no longer allows the move.
+ *
+ * The one thing that can't live inside the transaction is the provider refund: it is queued
+ * to run after commit (RefundPayment), idempotent and retried, so a crash or a timeout between
+ * the two halves leaves a refund_pending payment to finish, never money kept or paid twice.
  */
 class OrderService
 {
@@ -32,56 +40,60 @@ class OrderService
     /** Stop an order before fulfilment. A paid one is refunded and its stock goes back. */
     public function cancel(Order $order): Order
     {
-        // The parent's state alone isn't enough: once any vendor has shipped, this is a refund, not a cancel.
-        if (! $order->isCancellable()) {
-            throw CouldNotPerformTransition::notFound($order->status->getValue(), Cancelled::getMorphClass(), $order);
-        }
+        return $this->reverse($order, function (Order $locked) {
+            // The parent's state alone isn't enough: once any vendor has shipped, this is a refund, not a cancel.
+            if (! $locked->isCancellable()) {
+                throw CouldNotPerformTransition::notFound($locked->status->getValue(), Cancelled::getMorphClass(), $locked);
+            }
 
-        $wasPaid = $order->status instanceof Paid;
+            $wasPaid = $locked->status instanceof Paid;
 
-        if ($wasPaid) {
-            $this->payments->refund($order);
-        }
+            $locked->status->transitionTo(Cancelled::class);
+            $this->transitionSubOrders($locked, SubOrderCancelled::class);
 
-        DB::transaction(function () use ($order, $wasPaid) {
-            $order->status->transitionTo(Cancelled::class);
-            $this->transitionSubOrders($order, SubOrderCancelled::class);
+            if ($wasPaid) {
+                $this->payments->refund($locked);
+            }
 
             // A pending order never took stock (that happens on payment), hence the flag.
-            OrderCancelled::dispatch($order, $wasPaid);
+            OrderCancelled::dispatch($locked, $wasPaid);
         });
-
-        return $order->refresh();
     }
 
     /** Return the money after fulfilment started (processing → delivered); stock goes back. */
     public function refund(Order $order): Order
     {
-        $this->assertCanTransition($order, Refunded::class);
+        return $this->reverse($order, function (Order $locked) {
+            if (! $locked->status->canTransitionTo(Refunded::class)) {
+                throw CouldNotPerformTransition::notFound($locked->status->getValue(), Refunded::getMorphClass(), $locked);
+            }
 
-        $this->payments->refund($order);
+            $locked->status->transitionTo(Refunded::class);
+            $this->transitionSubOrders($locked, SubOrderRefunded::class);
+            $this->payments->refund($locked);
 
-        DB::transaction(function () use ($order) {
-            $order->status->transitionTo(Refunded::class);
-            $this->transitionSubOrders($order, SubOrderRefunded::class);
-
-            OrderRefunded::dispatch($order);
+            OrderRefunded::dispatch($locked);
         });
-
-        return $order->refresh();
     }
 
     /**
-     * Fail before any side effect if the state machine would reject the move — the
-     * refund call must not happen for an order that then can't be transitioned.
+     * Run $reversal on a locked, freshly loaded copy of the order (with its sub-orders locked
+     * too), inside one transaction. Lock order: order row first, then its sub-orders by id —
+     * SubOrderService::advance() uses the same order, so the two can't deadlock.
      *
-     * @param  class-string<State<Order>>  $target
+     * @param  Closure(Order): void  $reversal
      */
-    private function assertCanTransition(Order $order, string $target): void
+    private function reverse(Order $order, Closure $reversal): Order
     {
-        if (! $order->status->canTransitionTo($target)) {
-            throw CouldNotPerformTransition::notFound($order->status->getValue(), $target::getMorphClass(), $order);
-        }
+        DB::transaction(function () use ($order, $reversal) {
+            $locked = Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $locked->setRelation('subOrders', $locked->subOrders()->orderBy('id')->lockForUpdate()->get());
+            $locked->load('items');
+
+            $reversal($locked);
+        });
+
+        return $order->refresh();
     }
 
     /**

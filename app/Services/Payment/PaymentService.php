@@ -7,6 +7,7 @@ use App\Events\OrderUnfulfillable;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\OrderNotPayableException;
 use App\Exceptions\SurplusPaymentException;
+use App\Jobs\RefundPayment;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
@@ -97,8 +98,11 @@ class PaymentService
     }
 
     /**
-     * Return the money for an order: refund the payment that settled it at the provider and
-     * record it. Called by OrderService before the order itself changes state.
+     * Return the money for an order. Call it inside the transaction that reverses the order:
+     * it only *records* that the money is owed back (payment → refund_pending), so that
+     * decision commits atomically with the order's new state. The provider call itself runs
+     * in RefundPayment after commit, retried until it succeeds — a network call can't be part
+     * of a database transaction, so it is made idempotent and repeatable instead.
      */
     public function refund(Order $order): void
     {
@@ -108,9 +112,33 @@ class PaymentService
             return; // nothing was ever charged (or it has already been returned)
         }
 
+        $this->requestRefund($payment);
+    }
+
+    /**
+     * Second half of a refund, run by RefundPayment: return the money at the provider and
+     * record it. Idempotent — a payment that is not (or no longer) refund_pending is skipped,
+     * and the gateway keys the refund by transaction so even a repeat call can't pay twice.
+     */
+    public function executeRefund(Payment $payment): void
+    {
+        $payment->refresh();
+
+        if ($payment->status !== 'refund_pending') {
+            return;
+        }
+
         $this->gateway->refund($payment);
 
         $payment->update(['status' => 'refunded']);
+    }
+
+    /** Mark the money as owed back and queue the provider call for after the surrounding commit. */
+    private function requestRefund(Payment $payment): void
+    {
+        $payment->update(['status' => 'refund_pending']);
+
+        RefundPayment::dispatch($payment);
     }
 
     /**
@@ -145,9 +173,9 @@ class PaymentService
     }
 
     /**
-     * Money came back for an order we can't ship. Refund first (idempotent at the provider,
-     * so a retry after a crash here is safe), then record: payment refunded, order and its
-     * sub-orders cancelled, event id in the ledger so redeliveries are no-ops.
+     * The customer paid for an order we can't ship: record the reversal (payment refund_pending,
+     * order and its sub-orders cancelled, event id in the ledger so redeliveries are no-ops)
+     * and let RefundPayment return the money after commit.
      */
     private function refundUnfulfillable(string $eventId, string $transactionId, InsufficientStockException $soldOut): void
     {
@@ -185,14 +213,12 @@ class PaymentService
     }
 
     /**
-     * Provider refund first — it is idempotent per transaction, so a crash between the two steps
-     * is repaired by the provider's redelivery — then, in one transaction: ledger row, payment
-     * marked refunded, plus whatever else the caller needs to record.
+     * In one transaction: ledger row, payment marked refund_pending, plus whatever else the
+     * caller needs to record; the provider call follows after commit (RefundPayment). The
+     * ledger row makes a redelivery of the same event a no-op even while the job is pending.
      */
     private function recordRefund(string $eventId, Payment $payment, ?Closure $andRecord = null): void
     {
-        $this->gateway->refund($payment);
-
         DB::transaction(function () use ($eventId, $payment, $andRecord) {
             try {
                 PaymentEvent::firstOrCreate(['event_id' => $eventId]);
@@ -200,7 +226,7 @@ class PaymentService
                 // a concurrent delivery is recording the same outcome
             }
 
-            $payment->update(['status' => 'refunded']);
+            $this->requestRefund($payment);
 
             if ($andRecord !== null) {
                 $andRecord();
@@ -224,7 +250,7 @@ class PaymentService
 
             $payment = Payment::where('transaction_id', $transactionId)->firstOrFail();
 
-            if (in_array($payment->status, ['succeeded', 'refunded'], true)) {
+            if (in_array($payment->status, ['succeeded', 'refund_pending', 'refunded'], true)) {
                 return; // this charge has already been accounted for, under another event id
             }
 
