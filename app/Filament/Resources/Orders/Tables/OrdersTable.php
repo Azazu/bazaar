@@ -2,12 +2,9 @@
 
 namespace App\Filament\Resources\Orders\Tables;
 
+use App\Filament\Resources\Orders\Actions\OrderActions;
 use App\Models\Order;
-use App\Services\Order\OrderService;
-use App\States\Order\Cancelled;
-use App\States\Order\Refunded;
-use Filament\Actions\Action;
-use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -70,20 +67,9 @@ class OrdersTable
                 //
             ])
             ->recordActions([
-                Action::make('cancel')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->visible(fn (Order $record): bool => $record->status->canTransitionTo(Cancelled::class))
-                    ->action(fn (Order $record) => app(OrderService::class)->cancel($record)),
-                Action::make('refund')
-                    ->icon('heroicon-o-arrow-uturn-left')
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->modalDescription('Returns the payment, restores stock and voids vendor payouts.')
-                    ->visible(fn (Order $record): bool => $record->status->canTransitionTo(Refunded::class))
-                    ->action(fn (Order $record) => app(OrderService::class)->refund($record)),
-                EditAction::make(),
+                ViewAction::make(),
+                OrderActions::cancel(),
+                OrderActions::refund(),
             ])
             // Orders are financial records: no bulk deletion; cancel/refund are the only "removals".
             ->toolbarActions([])

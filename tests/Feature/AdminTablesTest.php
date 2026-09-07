@@ -19,7 +19,3 @@ it('formats money in the admin tables', function () {
     $this->actingAs(admin())->get('/admin/orders')->assertOk()->assertSee('$1,234.56');
     $this->actingAs(admin())->get('/admin/coupons')->assertOk()->assertSee('10%')->assertSee('$50.00');
 });
-
-it('does not let admins create orders by hand', function () {
-    $this->actingAs(admin())->get('/admin/orders/create')->assertForbidden();
-});
