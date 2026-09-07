@@ -81,6 +81,17 @@ class Order extends Model
     }
 
     /**
+     * The one attempt that settled the order (set on pending → paid, never changed). Every
+     * other attempt that succeeds at the provider is surplus and gets refunded.
+     *
+     * @return BelongsTo<Payment, $this>
+     */
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
+    }
+
+    /**
      * Fulfilment is driven per sub-order by each vendor; the parent's state is derived:
      * everything delivered → delivered, everything at least shipped → shipped, anything
      * started → processing. Cancelled/refunded sub-orders don't count. Moves one legal

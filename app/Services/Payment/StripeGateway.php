@@ -36,6 +36,19 @@ class StripeGateway implements PaymentGateway
         return new PaymentIntentData($intent->id, $intent->client_secret, requiresClientAction: true);
     }
 
+    public function resumeIntent(Payment $payment): ?PaymentIntentData
+    {
+        $intent = $this->stripe->paymentIntents->retrieve($payment->transaction_id);
+
+        if ($intent->status === 'canceled') {
+            return null; // Stripe won't confirm it any more; a new intent is needed
+        }
+
+        // Any other status is still confirmable (or already succeeded, in which case the webhook
+        // is on its way and the Payment Element will simply report that).
+        return new PaymentIntentData($intent->id, $intent->client_secret, requiresClientAction: true);
+    }
+
     public function refund(Payment $payment): void
     {
         // One refund per payment, however many times we get here (webhook retries, crashes after the call).

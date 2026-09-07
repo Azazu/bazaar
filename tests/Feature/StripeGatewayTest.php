@@ -80,3 +80,28 @@ it('refuses to run Stripe without a secret key', function () {
 
     expect(fn () => app(PaymentGateway::class))->toThrow(RuntimeException::class, 'STRIPE_SECRET');
 });
+
+it('resumes an open PaymentIntent by re-reading it, client secret included', function () {
+    $http = new RecordingStripeHttpClient(['id' => 'pi_abc', 'object' => 'payment_intent', 'client_secret' => 'pi_abc_secret_xyz', 'status' => 'requires_payment_method']);
+    ApiRequestor::setHttpClient($http);
+    $payment = Order::factory()->create()->payments()->create([
+        'gateway' => 'stripe', 'transaction_id' => 'pi_abc', 'status' => 'pending', 'amount_cents' => 100, 'currency' => 'USD',
+    ]);
+
+    $intent = (new StripeGateway(new StripeClient('sk_test_dummy')))->resumeIntent($payment);
+
+    expect($intent?->id)->toBe('pi_abc')
+        ->and($intent?->clientSecret)->toBe('pi_abc_secret_xyz')
+        ->and($intent?->requiresClientAction)->toBeTrue()
+        ->and($http->requests[0]['method'])->toBe('get')
+        ->and($http->requests[0]['url'])->toEndWith('/v1/payment_intents/pi_abc');
+});
+
+it('reports a canceled PaymentIntent as not resumable', function () {
+    ApiRequestor::setHttpClient(new RecordingStripeHttpClient(['id' => 'pi_abc', 'object' => 'payment_intent', 'status' => 'canceled']));
+    $payment = Order::factory()->create()->payments()->create([
+        'gateway' => 'stripe', 'transaction_id' => 'pi_abc', 'status' => 'pending', 'amount_cents' => 100, 'currency' => 'USD',
+    ]);
+
+    expect((new StripeGateway(new StripeClient('sk_test_dummy')))->resumeIntent($payment))->toBeNull();
+});

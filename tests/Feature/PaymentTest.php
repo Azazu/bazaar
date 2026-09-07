@@ -11,6 +11,7 @@ use App\Models\SubOrder;
 use App\Notifications\OrderUnfulfillableNotice;
 use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentIntentData;
 use App\Services\Payment\PaymentService;
 use App\States\Order\Cancelled;
 use App\States\Order\Paid;
@@ -123,4 +124,119 @@ it('refuses to start a payment for an order whose items are already out of stock
 
     expect(fn () => app(PaymentService::class)->start($order))->toThrow(InsufficientStockException::class);
     expect(Payment::count())->toBe(0); // no intent, no charge
+});
+
+/*
+ * One order, one open attempt (CR-001). Two Pay clicks, a reload or a retry after a lost
+ * response must never leave two intents that can both be charged.
+ */
+
+/** A FakePaymentGateway that logs refunds into $log and can be told the open intent is dead. */
+function loggingGateway(ArrayObject $log, bool $resumable = true): FakePaymentGateway
+{
+    return new class($log, $resumable) extends FakePaymentGateway
+    {
+        public function __construct(private ArrayObject $log, private bool $resumable) {}
+
+        public function resumeIntent(Payment $payment): ?PaymentIntentData
+        {
+            return $this->resumable ? parent::resumeIntent($payment) : null;
+        }
+
+        public function refund(Payment $payment): void
+        {
+            $this->log->append($payment->transaction_id);
+        }
+    };
+}
+
+it('resumes the open attempt instead of minting a second chargeable intent', function () {
+    $order = Order::factory()->create();
+
+    $first = app(PaymentService::class)->start($order);
+    $second = app(PaymentService::class)->start($order); // double click / reload / lost response
+
+    expect($second->payment->id)->toBe($first->payment->id)
+        ->and($second->payment->transaction_id)->toBe($first->payment->transaction_id)
+        ->and(Payment::where('order_id', $order->id)->count())->toBe(1);
+
+    // The resumed attempt is still fully payable.
+    app(PaymentService::class)->confirm('evt_resumed', $second->payment->transaction_id);
+    expect($order->fresh()->status)->toBeInstanceOf(Paid::class)
+        ->and($order->fresh()->payment_id)->toBe($first->payment->id);
+});
+
+it('starts a fresh attempt only when the provider can no longer complete the open one', function () {
+    app()->bind(PaymentGateway::class, fn () => loggingGateway(new ArrayObject, resumable: false));
+    $order = Order::factory()->create();
+
+    $first = app(PaymentService::class)->start($order)->payment;
+    $second = app(PaymentService::class)->start($order)->payment;
+
+    expect($second->id)->not->toBe($first->id)
+        ->and($first->fresh()->status)->toBe('failed')      // closed, can't be confirmed into a double charge
+        ->and($second->status)->toBe('pending')
+        ->and(Payment::where('order_id', $order->id)->where('status', 'pending')->count())->toBe(1);
+});
+
+it('starts a fresh attempt after the provider reported the previous one failed', function () {
+    $order = Order::factory()->create();
+
+    $first = app(PaymentService::class)->start($order)->payment;
+    app(PaymentService::class)->fail($first->transaction_id); // e.g. card declined
+
+    $second = app(PaymentService::class)->start($order)->payment;
+
+    expect($second->id)->not->toBe($first->id)
+        ->and(Payment::where('order_id', $order->id)->where('status', 'pending')->count())->toBe(1);
+});
+
+it('refunds a second successful charge instead of keeping two payments for one order', function () {
+    $refunds = new ArrayObject;
+    app()->bind(PaymentGateway::class, fn () => loggingGateway($refunds));
+
+    $variant = ProductVariant::factory()->create(['stock' => 5]);
+    $order = orderForVariant($variant, 1);
+
+    // Two intents for one order — what the old start() produced on a double click, and what a
+    // provider-side retry can still produce. Both get confirmed.
+    $winner = app(PaymentService::class)->start($order)->payment;
+    $stray = $order->payments()->create([
+        'gateway' => 'fake', 'transaction_id' => 'fake_stray', 'status' => 'pending',
+        'amount_cents' => $order->total_cents, 'currency' => $order->currency,
+    ]);
+
+    app(PaymentService::class)->confirm('evt_winner', $winner->transaction_id);
+    app(PaymentService::class)->confirm('evt_stray', $stray->transaction_id);
+
+    expect($order->fresh()->status)->toBeInstanceOf(Paid::class)
+        ->and($order->fresh()->payment_id)->toBe($winner->id)          // the order remembers who paid it
+        ->and($winner->fresh()->status)->toBe('succeeded')
+        ->and($stray->fresh()->status)->toBe('refunded')
+        ->and($refunds->getArrayCopy())->toBe(['fake_stray'])           // money went back, once
+        ->and($variant->fresh()->stock)->toBe(4)                        // stock moved once (OrderPaid ran once)
+        ->and(PaymentEvent::where('event_id', 'evt_stray')->exists())->toBeTrue();
+
+    // Redelivery of the stray's event, and a brand-new event id for the same stray charge:
+    // both are no-ops, no second refund.
+    app(PaymentService::class)->confirm('evt_stray', $stray->transaction_id);
+    app(PaymentService::class)->confirm('evt_stray_again', $stray->transaction_id);
+    expect($refunds)->toHaveCount(1)
+        ->and($order->fresh()->status)->toBeInstanceOf(Paid::class);
+});
+
+it('refunds a charge that lands after the order was cancelled', function () {
+    $refunds = new ArrayObject;
+    app()->bind(PaymentGateway::class, fn () => loggingGateway($refunds));
+
+    $order = Order::factory()->create();
+    $payment = app(PaymentService::class)->start($order)->payment;
+    $order->status->transitionTo(Cancelled::class); // buyer cancelled while the charge was in flight
+
+    app(PaymentService::class)->confirm('evt_late', $payment->transaction_id);
+
+    expect($order->fresh()->status)->toBeInstanceOf(Cancelled::class)
+        ->and($order->fresh()->payment_id)->toBeNull()
+        ->and($payment->fresh()->status)->toBe('refunded')
+        ->and($refunds->getArrayCopy())->toBe([$payment->transaction_id]);
 });

@@ -16,6 +16,13 @@ interface PaymentGateway
      */
     public function createIntent(Order $order): PaymentIntentData;
 
+    /**
+     * Pick up an attempt that was started but never completed (lost response, page reload),
+     * so the buyer finishes the same intent instead of getting a second chargeable one.
+     * Returns null when the provider can no longer complete it — the caller starts afresh.
+     */
+    public function resumeIntent(Payment $payment): ?PaymentIntentData;
+
     /** Return the money for a succeeded payment at the provider. */
     public function refund(Payment $payment): void;
 }

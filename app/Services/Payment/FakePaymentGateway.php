@@ -23,6 +23,11 @@ class FakePaymentGateway implements PaymentGateway
         return new PaymentIntentData('fake_'.Str::uuid()->toString());
     }
 
+    public function resumeIntent(Payment $payment): ?PaymentIntentData
+    {
+        return new PaymentIntentData($payment->transaction_id);
+    }
+
     public function refund(Payment $payment): void
     {
         // Nothing to call in the sandbox.

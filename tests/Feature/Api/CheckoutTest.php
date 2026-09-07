@@ -160,6 +160,11 @@ it('returns the client secret and keeps the order pending when the gateway needs
             return new PaymentIntentData('pi_test', 'pi_test_secret', requiresClientAction: true);
         }
 
+        public function resumeIntent(Payment $payment): ?PaymentIntentData
+        {
+            return null;
+        }
+
         public function refund(Payment $payment): void {}
     });
     Sanctum::actingAs($buyer = User::factory()->create());
