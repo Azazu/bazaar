@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\PaymentEvent;
 use App\States\Order\Paid;
 use App\States\Order\Pending;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class PaymentService
@@ -43,11 +44,22 @@ class PaymentService
      *   1. the event id is recorded in a unique ledger; a duplicate is ignored;
      *   2. the payment is only marked succeeded once;
      *   3. the order only transitions pending -> paid once (state machine guards the rest).
+     *
+     * Guard 1 also has to survive two deliveries arriving at the same instant. The loser's
+     * insert hits the unique index, and firstOrCreate's own recovery (re-read the row) comes
+     * up empty under MySQL's REPEATABLE READ, because the winner's row isn't committed inside
+     * the loser's snapshot — so the violation surfaces here and *is* the duplicate signal.
+     * The ledger row lives inside this transaction, so a rollback releases the event id and a
+     * later retry from the provider is applied normally.
      */
     public function confirm(string $eventId, string $transactionId): void
     {
         DB::transaction(function () use ($eventId, $transactionId) {
-            $event = PaymentEvent::firstOrCreate(['event_id' => $eventId]);
+            try {
+                $event = PaymentEvent::firstOrCreate(['event_id' => $eventId]);
+            } catch (UniqueConstraintViolationException) {
+                return; // a concurrent delivery of this same event is applying it
+            }
 
             if (! $event->wasRecentlyCreated) {
                 return; // already processed this exact event
