@@ -21,7 +21,8 @@
         "livewire/livewire": "^3.6.4",
         "livewire/volt": "^1.7.0",
         "spatie/laravel-model-states": "^2.14",
-        "spatie/laravel-permission": "^8.3"
+        "spatie/laravel-permission": "^8.3",
+        "stripe/stripe-php": "^21.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

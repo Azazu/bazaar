@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Opt in to `throttle:api` on the api group (limits defined in AppServiceProvider).
         $middleware->throttleApi();
 
+        // Stripe can't send a CSRF token; the webhook authenticates itself with a signature instead.
+        $middleware->validateCsrfTokens(except: ['stripe/webhook']);
+
         // spatie/laravel-permission route middleware aliases (e.g. 'role:vendor')
         $middleware->alias([
             'role' => RoleMiddleware::class,

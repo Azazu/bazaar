@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -17,6 +18,9 @@ Volt::route('/cart', 'pages.cart.index')->name('cart.index');
 
 Volt::route('/checkout', 'pages.checkout.index')->middleware('auth')->name('checkout.index');
 Volt::route('/orders/{order}', 'pages.orders.show')->middleware('auth')->name('orders.show');
+
+// Stripe calls this; CSRF is waived for it in bootstrap/app.php — the signature check replaces it.
+Route::post('/stripe/webhook', StripeWebhookController::class)->name('stripe.webhook');
 
 // Vendor area — sellers manage their store's orders and products.
 Route::middleware(['auth', 'role:vendor'])->prefix('vendor')->name('vendor.')->group(function () {

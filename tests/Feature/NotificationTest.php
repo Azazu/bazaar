@@ -23,7 +23,7 @@ it('notifies the buyer when the order is paid', function () {
         'qty' => 1,
     ]);
 
-    $payment = app(PaymentService::class)->start($order);
+    $payment = app(PaymentService::class)->start($order)->payment;
     app(PaymentService::class)->confirm('evt_notif', $payment->transaction_id);
 
     Notification::assertSentTo($order->buyer, OrderConfirmed::class);

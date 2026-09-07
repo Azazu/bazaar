@@ -28,6 +28,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'stripe' => [
+        'key' => env('STRIPE_KEY'),                       // publishable (pk_test_…), safe for the browser
+        'secret' => env('STRIPE_SECRET'),                 // sk_test_… — server only
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'), // whsec_… from `stripe listen` or the dashboard
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

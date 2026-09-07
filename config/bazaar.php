@@ -13,4 +13,10 @@ return [
     | Guest carts live in the session and follow its lifetime instead.
     */
     'cart_ttl_days' => (int) env('BAZAAR_CART_TTL_DAYS', 30),
+
+    /*
+    | Which PaymentGateway implementation to bind: "fake" (sandbox, no keys, settles instantly)
+    | or "stripe" (test mode via Stripe.js + webhook; needs the services.stripe.* keys).
+    */
+    'payment_gateway' => env('PAYMENT_GATEWAY', 'fake'),
 ];

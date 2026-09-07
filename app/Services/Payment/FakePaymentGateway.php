@@ -7,18 +7,24 @@ use App\Models\Payment;
 use Illuminate\Support\Str;
 
 /**
- * Sandbox stand-in for a real provider (Stripe). Simulates the intent step
- * without any network call or real money. Swap for a StripeGateway later.
+ * Sandbox stand-in: no network, no real money. Intents need no client action, so the
+ * caller simulates the provider's "succeeded" callback right away. Selected with
+ * PAYMENT_GATEWAY=fake — the default, so the app runs without any Stripe keys.
  */
 class FakePaymentGateway implements PaymentGateway
 {
-    public function createIntent(Order $order): string
+    public function name(): string
     {
-        return 'fake_'.Str::uuid()->toString();
+        return 'fake';
+    }
+
+    public function createIntent(Order $order): PaymentIntentData
+    {
+        return new PaymentIntentData('fake_'.Str::uuid()->toString());
     }
 
     public function refund(Payment $payment): void
     {
-        // Nothing to call in the sandbox; the real gateway would issue the provider refund here.
+        // Nothing to call in the sandbox.
     }
 }

@@ -19,23 +19,36 @@ class PaymentService
 
     /**
      * Start a payment for a pending order: create the provider intent and a local Payment row.
+     * The client secret travels back to the caller only — it is never stored.
      *
      * The state check lives here, not only in OrderPolicy: policies can be bypassed
      * (admins pass Gate::before), the domain invariant must not be.
      */
-    public function start(Order $order): Payment
+    public function start(Order $order): StartedPayment
     {
         if (! $order->status instanceof Pending) {
             throw new OrderNotPayableException($order);
         }
 
-        return $order->payments()->create([
-            'gateway' => 'fake',
-            'transaction_id' => $this->gateway->createIntent($order),
+        $intent = $this->gateway->createIntent($order);
+
+        $payment = $order->payments()->create([
+            'gateway' => $this->gateway->name(),
+            'transaction_id' => $intent->id,
             'status' => 'pending',
             'amount_cents' => $order->total_cents,
             'currency' => $order->currency,
         ]);
+
+        return new StartedPayment($payment, $intent->clientSecret, $intent->requiresClientAction);
+    }
+
+    /** The provider reported a failed attempt: record it; the order stays pending and can be retried. */
+    public function fail(string $transactionId): void
+    {
+        Payment::where('transaction_id', $transactionId)
+            ->where('status', 'pending')
+            ->update(['status' => 'failed']);
     }
 
     /**

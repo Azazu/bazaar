@@ -12,17 +12,27 @@ use Illuminate\Support\Str;
 class OrderPaymentController extends Controller
 {
     /**
-     * Sandbox payment: start the intent and immediately simulate the provider's
-     * "succeeded" callback. With a real gateway the second step is the webhook,
-     * not this request — the client would only call start and then poll the order.
+     * Start a payment. With Stripe the response carries the client secret and the order
+     * stays pending until Stripe's webhook confirms it — the client confirms with the Stripe
+     * SDK and then polls the order. With the sandbox gateway there is nothing for the client
+     * to do, so the provider's "succeeded" callback is simulated right here.
      */
     public function __invoke(Order $order, PaymentService $payments): OrderResource
     {
         Gate::authorize('pay', $order);
 
-        $payment = $payments->start($order);
-        $payments->confirm('evt_'.Str::uuid(), $payment->transaction_id);
+        $started = $payments->start($order);
 
-        return OrderResource::make($order->refresh()->load(['items', 'subOrders.store', 'coupon']));
+        if (! $started->requiresClientAction) {
+            $payments->confirm('evt_'.Str::uuid(), $started->payment->transaction_id);
+        }
+
+        return OrderResource::make($order->refresh()->load(['items', 'subOrders.store', 'coupon']))
+            ->additional(['payment' => [
+                'id' => $started->payment->id,
+                'gateway' => $started->payment->gateway,
+                'status' => $started->payment->refresh()->status,
+                'client_secret' => $started->clientSecret,
+            ]]);
     }
 }

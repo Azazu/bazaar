@@ -35,7 +35,7 @@ function racingPayments(ProductVariant $variant, int $racers): array
             'qty' => 1,
         ]);
 
-        return app(PaymentService::class)->start($order)->transaction_id;
+        return app(PaymentService::class)->start($order)->payment->transaction_id;
     })->all();
 }
 

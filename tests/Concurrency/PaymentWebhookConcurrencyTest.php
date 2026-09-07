@@ -38,7 +38,7 @@ it('applies a webhook once when the provider delivers the same event simultaneou
         'subtotal_cents' => $variant->price_cents * 2,
     ]);
 
-    $transactionId = app(PaymentService::class)->start($order)->transaction_id;
+    $transactionId = app(PaymentService::class)->start($order)->payment->transaction_id;
 
     $result = raceInParallel($deliveries, function () use ($transactionId) {
         app(PaymentService::class)->confirm('evt_duplicate', $transactionId);

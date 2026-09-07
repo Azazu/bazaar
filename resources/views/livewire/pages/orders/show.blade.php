@@ -7,12 +7,15 @@ use Illuminate\Support\Str;
 
 use function Livewire\Volt\{mount, state};
 
-state(['order']);
+state(['order', 'clientSecret' => null, 'awaitingConfirmation' => false]);
 
 mount(function (Order $order) {
     $this->authorize('view', $order); // OrderPolicy: a buyer sees only their own orders
 
     $this->order = $order->load('items', 'coupon');
+
+    // Back from Stripe's redirect: the charge went through, the webhook will flip the order.
+    $this->awaitingConfirmation = request('redirect_status') === 'succeeded';
 });
 
 // Buyer-side cancellation; OrderService refunds and restocks a paid order.
@@ -22,17 +25,30 @@ $cancel = function () {
     $this->order = app(OrderService::class)->cancel($this->order)->load('items', 'coupon');
 };
 
-// Sandbox payment: start the intent, then simulate the provider's "succeeded" callback.
+// Start a payment. Stripe: hand the client secret to the Payment Element and wait for the
+// webhook. Sandbox: nothing to confirm client-side, so simulate the provider's callback now.
 $pay = function () {
-    $payment = app(PaymentService::class)->start($this->order);
-    app(PaymentService::class)->confirm('evt_'.Str::uuid(), $payment->transaction_id);
+    $started = app(PaymentService::class)->start($this->order);
 
+    if ($started->requiresClientAction) {
+        $this->clientSecret = $started->clientSecret;
+
+        return;
+    }
+
+    app(PaymentService::class)->confirm('evt_'.Str::uuid(), $started->payment->transaction_id);
     $this->order->refresh();
 };
 
 ?>
 
 <div class="max-w-3xl mx-auto p-6">
+    @if (config('bazaar.payment_gateway') === 'stripe')
+        @push('head')
+            <script src="https://js.stripe.com/v3/"></script>
+        @endpush
+    @endif
+
     <h1 class="text-2xl font-bold">{{ __('Order') }} #{{ $order->id }}</h1>
     <p class="text-gray-500 mb-6">{{ __('Status') }}: <span class="font-medium">{{ $order->status->label() }}</span></p>
 
@@ -60,12 +76,32 @@ $pay = function () {
     </div>
 
     @if ($order->status instanceof \App\States\Order\Pending)
-        <div class="mt-6">
-            <button wire:click="pay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-                {{ __('Pay (test)') }}
-            </button>
-            <p class="text-xs text-gray-400 mt-1">{{ __('Sandbox payment — no real charge.') }}</p>
-        </div>
+        @if ($awaitingConfirmation)
+            <div wire:poll.3s class="mt-6 rounded border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-800">
+                {{ __('Payment received — confirming with the provider…') }}
+            </div>
+        @elseif ($clientSecret)
+            <div class="mt-6 max-w-md" wire:ignore
+                 x-data="stripePayment(@js($clientSecret), @js(config('services.stripe.key')), @js(route('orders.show', $order)))"
+                 x-init="mount()">
+                <form @submit.prevent="submit" class="space-y-4">
+                    <div x-ref="element"></div>
+                    <p x-show="error" x-text="error" class="text-sm text-red-600"></p>
+                    <button type="submit" :disabled="busy"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+                        {{ __('Pay') }} {{ money($order->total_cents) }}
+                    </button>
+                </form>
+                <p class="text-xs text-gray-400 mt-2">{{ __('Stripe test mode — use card 4242 4242 4242 4242.') }}</p>
+            </div>
+        @else
+            <div class="mt-6">
+                <button wire:click="pay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                    {{ __('Pay') }} {{ money($order->total_cents) }}
+                </button>
+                <p class="text-xs text-gray-400 mt-1">{{ __('Test mode — no real charge.') }}</p>
+            </div>
+        @endif
     @endif
 
     @can('cancel', $order)

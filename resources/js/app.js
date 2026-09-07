@@ -2,3 +2,9 @@
 // Do NOT import or start Alpine here — a second instance overrides Livewire's and
 // breaks features like Alpine.navigate. Register custom Alpine directives/components
 // via a `livewire:init` listener if you ever need them.
+
+import stripePayment from './stripe-payment';
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('stripePayment', stripePayment);
+});

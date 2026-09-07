@@ -13,7 +13,7 @@ it('marks the order paid on a successful payment', function () {
     Event::fake([OrderPaid::class]);
 
     $order = Order::factory()->create(); // pending
-    $payment = app(PaymentService::class)->start($order);
+    $payment = app(PaymentService::class)->start($order)->payment;
 
     app(PaymentService::class)->confirm('evt_1', $payment->transaction_id);
 
@@ -27,7 +27,7 @@ it('is idempotent when the same payment event arrives twice', function () {
     Event::fake([OrderPaid::class]);
 
     $order = Order::factory()->create();
-    $payment = app(PaymentService::class)->start($order);
+    $payment = app(PaymentService::class)->start($order)->payment;
 
     // A provider may deliver the same webhook more than once.
     app(PaymentService::class)->confirm('evt_dup', $payment->transaction_id);
@@ -43,7 +43,7 @@ it('applies the effect once when the provider retries with a new event id', func
     Event::fake([OrderPaid::class]);
 
     $order = Order::factory()->create();
-    $payment = app(PaymentService::class)->start($order);
+    $payment = app(PaymentService::class)->start($order)->payment;
 
     // Not every retry reuses the event id — a provider may raise a fresh event for the same
     // charge. The payment's own status is the second guard behind the event ledger.

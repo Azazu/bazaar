@@ -2,8 +2,11 @@
 
 use App\Models\Coupon;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Services\Payment\PaymentGateway;
+use App\Services\Payment\PaymentIntentData;
 use App\States\Order\Paid;
 use App\States\Order\Pending;
 use Laravel\Sanctum\Sanctum;
@@ -141,4 +144,30 @@ it('reports a stock shortfall at payment time and leaves the order pending', fun
 
     expect(Order::find($orderId)->status)->toBeInstanceOf(Pending::class)
         ->and(Order::find($orderId)->status)->not->toBeInstanceOf(Paid::class);
+});
+
+it('returns the client secret and keeps the order pending when the gateway needs client confirmation', function () {
+    app()->bind(PaymentGateway::class, fn () => new class implements PaymentGateway
+    {
+        public function name(): string
+        {
+            return 'stripe';
+        }
+
+        public function createIntent(Order $order): PaymentIntentData
+        {
+            return new PaymentIntentData('pi_test', 'pi_test_secret', requiresClientAction: true);
+        }
+
+        public function refund(Payment $payment): void {}
+    });
+    Sanctum::actingAs($buyer = User::factory()->create());
+    $order = Order::factory()->create(['buyer_id' => $buyer->id]);
+
+    $this->postJson("/api/v1/orders/{$order->id}/pay")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('payment.gateway', 'stripe')
+        ->assertJsonPath('payment.status', 'pending')
+        ->assertJsonPath('payment.client_secret', 'pi_test_secret');
 });

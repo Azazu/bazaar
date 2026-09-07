@@ -83,7 +83,7 @@ function orderForVariant(ProductVariant $variant, int $qty): Order
 /** Pay an order through the (sandbox) payment service. */
 function pay(Order $order): void
 {
-    $payment = app(PaymentService::class)->start($order);
+    $payment = app(PaymentService::class)->start($order)->payment;
     app(PaymentService::class)->confirm('evt_'.uniqid(), $payment->transaction_id);
 }
 
