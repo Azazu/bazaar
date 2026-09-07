@@ -29,8 +29,10 @@ class ReviewController extends Controller
     /** Submit a review; it stays hidden until an admin approves it. */
     public function store(StoreReviewRequest $request, Product $product): JsonResponse
     {
+        $user = $request->user() ?? abort(401);
+
         $review = $product->reviews()->create([
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'rating' => $request->integer('rating'),
             'body' => $request->input('body'),
             'approved' => false,

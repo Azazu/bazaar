@@ -14,11 +14,13 @@ class Payout extends Model
 
     protected $fillable = ['store_id', 'sub_order_id', 'amount_cents', 'commission_cents', 'status'];
 
+    /** @return BelongsTo<Store, $this> */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /** @return BelongsTo<SubOrder, $this> */
     public function subOrder(): BelongsTo
     {
         return $this->belongsTo(SubOrder::class);

@@ -14,7 +14,9 @@ class OrderController extends Controller
     /** The buyer's own orders, newest first. Scoped through the relation — never a bare Order::query(). */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $orders = $request->user()->orders()
+        $user = $request->user() ?? abort(401);
+
+        $orders = $user->orders()
             ->with('items')
             ->latest()
             ->paginate(15);

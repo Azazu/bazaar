@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\ModelStates\HasStates;
 
+/**
+ * @property SubOrderState $status spatie/model-states cast — declared so static analysis sees the state object, not a string
+ */
 class SubOrder extends Model
 {
     /** @use HasFactory<SubOrderFactory> */
@@ -23,21 +26,25 @@ class SubOrder extends Model
         return ['status' => SubOrderState::class];
     }
 
+    /** @return BelongsTo<Order, $this> */
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
     }
 
+    /** @return BelongsTo<Store, $this> */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /** @return HasMany<OrderItem, $this> */
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
+    /** @return HasOne<Payout, $this> */
     public function payout(): HasOne
     {
         return $this->hasOne(Payout::class);

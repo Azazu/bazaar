@@ -6,7 +6,11 @@ use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** Snapshot line: title/name/price as they were at purchase time. @mixin OrderItem */
+/**
+ * Snapshot line: title/name/price as they were at purchase time.
+ *
+ * @mixin OrderItem
+ */
 class OrderItemResource extends JsonResource
 {
     /** @return array<string, mixed> */

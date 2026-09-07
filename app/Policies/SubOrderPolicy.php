@@ -20,6 +20,6 @@ class SubOrderPolicy
 
     private function owns(User $user, SubOrder $subOrder): bool
     {
-        return $subOrder->store->owner_id === $user->id;
+        return $subOrder->store?->owner_id === $user->id;
     }
 }

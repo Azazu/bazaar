@@ -8,6 +8,7 @@ use App\Services\Cart\CartStorageFactory;
 use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -29,7 +30,7 @@ class AppServiceProvider extends ServiceProvider
         // API token), session cart for guests. Resolved lazily so the auth middleware has run.
         $this->app->bind(CartStorage::class, fn (Application $app): CartStorage => $app
             ->make(CartStorageFactory::class)
-            ->forViewer($app['auth']->user()));
+            ->forViewer($app->make(AuthFactory::class)->guard()->user()));
     }
 
     /**

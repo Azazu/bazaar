@@ -25,7 +25,9 @@ class TokenController extends Controller
     /** Revoke the token used for this request (log out this device only). */
     public function destroy(Request $request): Response
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user() ?? abort(401);
+
+        $user->currentAccessToken()->delete();
 
         return response()->noContent();
     }

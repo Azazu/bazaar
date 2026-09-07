@@ -2,9 +2,11 @@
 
 namespace App\States\SubOrder;
 
+use App\Models\SubOrder;
 use Spatie\ModelStates\State;
 use Spatie\ModelStates\StateConfig;
 
+/** @extends State<SubOrder> */
 abstract class SubOrderState extends State
 {
     abstract public function label(): string;

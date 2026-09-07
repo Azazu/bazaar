@@ -14,6 +14,6 @@ class SendOrderConfirmation
      */
     public function handle(OrderPaid $event): void
     {
-        $event->order->buyer->notify(new OrderConfirmed($event->order));
+        $event->order->buyer?->notify(new OrderConfirmed($event->order));
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Services\Cart\CartService;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class CheckoutService
 {
@@ -59,16 +60,17 @@ class CheckoutService
 
             foreach ($lines as $line) {
                 $variant = $line['variant'];
+                $product = $variant->product ?? throw new LogicException("Variant #{$variant->id} has no product.");
 
                 $item = $order->items()->create([
                     'product_variant_id' => $variant->id,
-                    'product_title' => $variant->product->title,   // snapshot
+                    'product_title' => $product->title,            // snapshot
                     'variant_name' => $variant->name,              // snapshot
                     'unit_price_cents' => $variant->price_cents,   // snapshot price
                     'qty' => $line['qty'],
                 ]);
 
-                $itemsByStore[$variant->product->store_id][] = $item;
+                $itemsByStore[$product->store_id][] = $item;
             }
 
             // Split into one sub-order per store; re-point each line to its sub-order.

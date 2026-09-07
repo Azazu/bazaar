@@ -20,7 +20,7 @@ class OrderItemFactory extends Factory
         return [
             'order_id' => Order::factory(),
             'product_variant_id' => ProductVariant::factory(),
-            'product_title' => ucfirst(fake()->words(3, true)),
+            'product_title' => ucfirst(implode(' ', (array) fake()->words(3))),
             'variant_name' => fake()->randomElement(['S', 'M', 'L', 'XL']).' / '.fake()->safeColorName(),
             'unit_price_cents' => fake()->numberBetween(500, 50_000),
             'qty' => fake()->numberBetween(1, 3),

@@ -21,16 +21,19 @@ class Review extends Model
         return ['approved' => 'boolean'];
     }
 
+    /** @return MorphTo<Model, $this> */
     public function reviewable(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /** @param  Builder<Review>  $query */
     public function scopeApproved(Builder $query): void
     {
         $query->where('approved', true);

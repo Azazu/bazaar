@@ -27,13 +27,24 @@ class Category extends Model
         static::deleted(fn () => static::flushCache());
     }
 
-    /** Flat, name-sorted list (filter dropdowns). */
+    /**
+     * Flat, name-sorted list (filter dropdowns).
+     *
+     * @return EloquentCollection<int, Category>
+     */
     public static function cachedList(): EloquentCollection
     {
-        return static::hydrate(static::cachedRows());
+        /** @var EloquentCollection<int, Category> $categories */
+        $categories = static::hydrate(self::cachedRows());
+
+        return $categories;
     }
 
-    /** Top-level categories with their `children` relation set (the public tree). */
+    /**
+     * Top-level categories with their `children` relation set (the public tree).
+     *
+     * @return EloquentCollection<int, Category>
+     */
     public static function cachedTree(): EloquentCollection
     {
         $all = static::cachedList();
@@ -69,16 +80,19 @@ class Category extends Model
             ->toArray());
     }
 
+    /** @return BelongsTo<Category, $this> */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Category::class, 'parent_id');
     }
 
+    /** @return HasMany<Category, $this> */
     public function children(): HasMany
     {
         return $this->hasMany(Category::class, 'parent_id');
     }
 
+    /** @return BelongsToMany<Product, $this> */
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class);

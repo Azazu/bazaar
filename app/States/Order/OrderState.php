@@ -2,9 +2,11 @@
 
 namespace App\States\Order;
 
+use App\Models\Order;
 use Spatie\ModelStates\State;
 use Spatie\ModelStates\StateConfig;
 
+/** @extends State<Order> */
 abstract class OrderState extends State
 {
     /** Human-readable label for the state (for UI). */

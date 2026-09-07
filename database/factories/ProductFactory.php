@@ -19,7 +19,7 @@ class ProductFactory extends Factory
      */
     public function definition(): array
     {
-        $title = fake()->unique()->words(3, true);
+        $title = implode(' ', (array) fake()->unique()->words(3));
 
         return [
             'store_id' => Store::factory(),

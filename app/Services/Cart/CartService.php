@@ -64,7 +64,11 @@ class CartService
         $this->save($cart);
     }
 
-    /** Cart lines: each variant (with product) + quantity + line total. */
+    /**
+     * Cart lines: each variant (with product) + quantity + line total.
+     *
+     * @return Collection<int, array{variant: ProductVariant, qty: int, line_total_cents: int}>
+     */
     public function items(): Collection
     {
         $cart = $this->raw();
@@ -102,6 +106,7 @@ class CartService
         return $this->storage->get();
     }
 
+    /** @param  array<int, int>  $cart */
     private function save(array $cart): void
     {
         $this->storage->put($cart);

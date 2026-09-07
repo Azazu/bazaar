@@ -13,6 +13,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
+/**
+ * @property-read float|string|null $reviews_avg_rating  present after withRating()
+ * @property-read int $reviews_count                     present after withRating()
+ */
 class Product extends Model
 {
     /** @use HasFactory<ProductFactory> */
@@ -25,21 +29,25 @@ class Product extends Model
         return ['status' => ProductStatus::class];
     }
 
+    /** @return BelongsTo<Store, $this> */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /** @return HasMany<ProductVariant, $this> */
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
     }
 
+    /** @return BelongsToMany<Category, $this> */
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class);
     }
 
+    /** @param  Builder<Product>  $query */
     public function scopePublished(Builder $query): void
     {
         $query->where('status', ProductStatus::Published);
@@ -68,18 +76,21 @@ class Product extends Model
     /**
      * Eager-load the public rating (average + count of approved reviews) as
      * `reviews_avg_rating` / `reviews_count` — one aggregate query, no N+1 on lists.
+     *
+     * @param  Builder<Product>  $query
      */
     public function scopeWithRating(Builder $query): void
     {
         $query
-            ->withAvg(['reviews as reviews_avg_rating' => fn (Builder $q) => $q->approved()], 'rating')
-            ->withCount(['reviews as reviews_count' => fn (Builder $q) => $q->approved()]);
+            ->withAvg(['reviews as reviews_avg_rating' => fn (Builder $q) => $q->where('approved', true)], 'rating')
+            ->withCount(['reviews as reviews_count' => fn (Builder $q) => $q->where('approved', true)]);
     }
 
     /**
      * Catalog filters. Expects already-validated, normalized input
      * (see ProductIndexRequest::filters()).
      *
+     * @param  Builder<Product>  $query
      * @param  array{category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, min_rating?: ?int, sort?: ?string}  $filters
      */
     public function scopeFilter(Builder $query, array $filters): void
@@ -105,6 +116,7 @@ class Product extends Model
         };
     }
 
+    /** @return MorphMany<Review, $this> */
     public function reviews(): MorphMany
     {
         return $this->morphMany(Review::class, 'reviewable');
@@ -113,7 +125,7 @@ class Product extends Model
     /** Average of approved review ratings (0.0 if none). */
     public function averageRating(): float
     {
-        return (float) round($this->reviews()->approved()->avg('rating') ?? 0, 1);
+        return round((float) ($this->reviews()->approved()->avg('rating') ?? 0), 1);
     }
 
     /** Has this user bought this product (in a paid order)? Gates who may review. */

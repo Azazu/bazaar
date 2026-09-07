@@ -14,14 +14,11 @@ class ProductSearch
 {
     /**
      * @param  array{q?: ?string, category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, min_rating?: ?int, sort?: ?string}  $filters
+     * @return LengthAwarePaginator<int, Product>
      */
     public function paginate(array $filters, int $perPage = 12): LengthAwarePaginator
     {
-        $constrain = fn (Builder $query): Builder => $query
-            ->published()
-            ->with(['store', 'variants'])
-            ->withRating()
-            ->filter($filters);
+        $constrain = fn (Builder $query): Builder => $this->constrain($query, $filters);
 
         $term = trim((string) ($filters['q'] ?? ''));
 
@@ -38,5 +35,21 @@ class ProductSearch
             ->paginate($perPage)
             ->withQueryString()
             ->appends('query', null); // Scout appends its own `query=`; ours is `q` (already in the query string)
+    }
+
+    /**
+     * Visibility, eager loads, rating aggregates and facets — identical for both branches.
+     *
+     * @param  Builder<Product>  $query
+     * @param  array{q?: ?string, category?: ?string, min_price?: ?int, max_price?: ?int, in_stock?: bool, min_rating?: ?int, sort?: ?string}  $filters
+     * @return Builder<Product>
+     */
+    private function constrain(Builder $query, array $filters): Builder
+    {
+        return $query
+            ->published()
+            ->with(['store', 'variants'])
+            ->withRating()
+            ->filter($filters);
     }
 }

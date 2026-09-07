@@ -16,6 +16,7 @@ class Payment extends Model
         'currency',
     ];
 
+    /** @return BelongsTo<Order, $this> */
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

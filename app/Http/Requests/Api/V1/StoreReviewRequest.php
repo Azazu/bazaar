@@ -13,7 +13,7 @@ class StoreReviewRequest extends FormRequest
     /** Only buyers of the product may review it (ReviewPolicy). */
     public function authorize(): bool
     {
-        return $this->user()->can('create', [Review::class, $this->product()]);
+        return $this->user()?->can('create', [Review::class, $this->product()]) ?? false;
     }
 
     /** @return array<string, array<int, string>> */
@@ -36,7 +36,7 @@ class StoreReviewRequest extends FormRequest
         return [
             function (Validator $validator) {
                 $alreadyReviewed = $this->product()->reviews()
-                    ->where('user_id', $this->user()->id)
+                    ->where('user_id', $this->user()?->id)
                     ->exists();
 
                 if ($alreadyReviewed) {
@@ -48,6 +48,8 @@ class StoreReviewRequest extends FormRequest
 
     private function product(): Product
     {
-        return $this->route('product');
+        $product = $this->route('product');
+
+        return $product instanceof Product ? $product : abort(404);
     }
 }

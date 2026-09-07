@@ -14,7 +14,7 @@ class CheckoutController extends Controller
     public function __invoke(CheckoutRequest $request, CheckoutService $checkout): JsonResponse
     {
         $order = $checkout->place(
-            $request->user(),
+            $request->user() ?? abort(401),
             $request->shippingAddress(),
             $request->shippingMethod(),
             $request->coupon(),

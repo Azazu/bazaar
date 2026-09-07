@@ -33,9 +33,9 @@ class AddCartItemRequest extends FormRequest
                     return;
                 }
 
-                $variant = ProductVariant::with('product')->find($this->integer('variant_id'));
+                $variant = ProductVariant::with('product')->findOrFail($this->integer('variant_id'));
 
-                if ($variant->product->status !== ProductStatus::Published) {
+                if ($variant->product?->status !== ProductStatus::Published) {
                     $validator->errors()->add('variant_id', __('This product is not available.'));
                 } elseif ($variant->stock < 1) {
                     $validator->errors()->add('variant_id', __('This variant is out of stock.'));

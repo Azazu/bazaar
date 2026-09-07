@@ -6,7 +6,11 @@ use App\Models\Store;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** Public face of a store — never the owner or moderation status. @mixin Store */
+/**
+ * Public face of a store — never the owner or moderation status.
+ *
+ * @mixin Store
+ */
 class StoreResource extends JsonResource
 {
     /** @return array<string, mixed> */

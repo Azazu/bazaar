@@ -11,6 +11,7 @@ use App\States\Order\Paid;
 use App\States\Order\Pending;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class PaymentService
 {
@@ -73,7 +74,7 @@ class PaymentService
 
             $payment->update(['status' => 'succeeded']);
 
-            $order = $payment->order;
+            $order = $payment->order ?? throw new LogicException("Payment #{$payment->id} has no order.");
 
             if ($order->status instanceof Pending) {
                 $order->status->transitionTo(Paid::class);

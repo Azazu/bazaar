@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Exceptions\InsufficientStockException;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
 use App\Services\Stock\StockManager;
@@ -42,9 +43,10 @@ class StockOversellDemo extends Command
 
         // Setup: one buyer-owner, a variant with `stock` units, and one pending order per racer.
         $buyer = User::factory()->create();
-        $variant = ProductVariant::factory()->create(['stock' => $stock]);
+        $product = Product::factory()->create();
+        $variant = ProductVariant::factory()->for($product)->create(['stock' => $stock]);
 
-        $orderIds = collect(range(1, $buyers))->map(function () use ($buyer, $variant) {
+        $orderIds = collect(range(1, $buyers))->map(function () use ($buyer, $variant, $product) {
             $order = Order::factory()->create([
                 'buyer_id' => $buyer->id,
                 'subtotal_cents' => $variant->price_cents,
@@ -53,7 +55,7 @@ class StockOversellDemo extends Command
             ]);
             $order->items()->create([
                 'product_variant_id' => $variant->id,
-                'product_title' => $variant->product->title,
+                'product_title' => $product->title,
                 'variant_name' => $variant->name,
                 'unit_price_cents' => $variant->price_cents,
                 'qty' => 1,
@@ -80,7 +82,7 @@ class StockOversellDemo extends Command
                 DB::reconnect();
 
                 try {
-                    app(StockManager::class)->decrementForOrder(Order::with('items')->find($orderId));
+                    app(StockManager::class)->decrementForOrder(Order::with('items')->findOrFail($orderId));
                     exit(0); // sold
                 } catch (InsufficientStockException) {
                     exit(1); // correctly rejected — out of stock
@@ -102,7 +104,7 @@ class StockOversellDemo extends Command
             };
         }
 
-        $finalStock = $variant->fresh()->stock;
+        $finalStock = $variant->refresh()->stock;
 
         $this->table(['metric', 'value'], [
             ['buyers', $buyers],
@@ -119,7 +121,7 @@ class StockOversellDemo extends Command
 
         // Cleanup (buyer cascade removes orders/items; product cascade removes the variant).
         $buyer->delete();
-        $variant->product()->delete();
+        $product->delete();
 
         return $ok ? self::SUCCESS : self::FAILURE;
     }
