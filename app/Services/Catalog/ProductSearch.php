@@ -47,7 +47,7 @@ class ProductSearch
     private function constrain(Builder $query, array $filters): Builder
     {
         return $query
-            ->published()
+            ->visible()
             ->with(['store', 'variants', 'primaryImage'])
             ->withRating()
             ->filter($filters);

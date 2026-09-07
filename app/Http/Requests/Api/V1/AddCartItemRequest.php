@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Api\V1;
 
-use App\Enums\ProductStatus;
 use App\Models\ProductVariant;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,7 +34,7 @@ class AddCartItemRequest extends FormRequest
 
                 $variant = ProductVariant::with('product')->findOrFail($this->integer('variant_id'));
 
-                if ($variant->product?->status !== ProductStatus::Published) {
+                if (! $variant->product?->isVisible()) {
                     $validator->errors()->add('variant_id', __('This product is not available.'));
                 } elseif ($variant->stock < 1) {
                     $validator->errors()->add('variant_id', __('This variant is out of stock.'));

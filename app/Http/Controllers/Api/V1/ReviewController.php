@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Enums\ProductStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StoreReviewRequest;
 use App\Http\Resources\V1\ReviewResource;
@@ -15,7 +14,7 @@ class ReviewController extends Controller
     /** Approved reviews of a published product. */
     public function index(Product $product): AnonymousResourceCollection
     {
-        abort_unless($product->status === ProductStatus::Published, 404);
+        abort_unless($product->isVisible(), 404);
 
         $reviews = $product->reviews()
             ->approved()

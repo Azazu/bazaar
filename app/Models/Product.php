@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProductStatus;
+use App\Enums\StoreStatus;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -72,6 +73,24 @@ class Product extends Model
     }
 
     /**
+     * What the storefront and the API may show: published, and the store is active — a
+     * suspended or not-yet-approved store takes its catalog offline with it.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeVisible(Builder $query): void
+    {
+        $query->published()->whereHas('store', fn (Builder $store) => $store->where('status', StoreStatus::Active));
+    }
+
+    /** Single-model counterpart of visible(). */
+    public function isVisible(): bool
+    {
+        return $this->status === ProductStatus::Published
+            && $this->store?->status === StoreStatus::Active;
+    }
+
+    /**
      * What the search index knows about a product. With the database driver these keys are
      * the columns matched with LIKE; with Meilisearch they become the indexed document.
      *
@@ -85,10 +104,10 @@ class Product extends Model
         ];
     }
 
-    /** Drafts and archived products never enter the index (matters for Meilisearch, not LIKE). */
+    /** Only what the storefront may show enters the index (matters for Meilisearch, not LIKE). */
     public function shouldBeSearchable(): bool
     {
-        return $this->status === ProductStatus::Published;
+        return $this->isVisible();
     }
 
     /**

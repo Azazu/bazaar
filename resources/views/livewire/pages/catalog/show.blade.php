@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\ProductStatus;
 use App\Models\Product;
 use App\Models\Review;
 use App\Services\Cart\CartService;
@@ -10,7 +9,7 @@ use function Livewire\Volt\{computed, mount, state};
 state(['product', 'justAdded' => null, 'rating' => 5, 'body' => '', 'reviewSubmitted' => false]);
 
 mount(function (Product $product) {
-    abort_if($product->status !== ProductStatus::Published, 404); // draft/archived → 404
+    abort_unless($product->isVisible(), 404); // draft/archived, or the store isn't active
 
     $this->product = $product->load('variants', 'images');
 });
