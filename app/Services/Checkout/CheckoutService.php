@@ -20,8 +20,9 @@ class CheckoutService
     public function __construct(private readonly CartService $cart) {}
 
     /**
-     * Build a pending order (+ snapshot line items) from the current cart,
-     * atomically, then clear the cart. Returns the created order.
+     * Build a pending order (+ snapshot line items) from the current cart, atomically.
+     * The cart is left alone: it empties when the order is actually paid (see
+     * ReleasePurchasedCartLines), so an abandoned checkout doesn't lose the basket.
      *
      * @param  array<string, string>  $shippingAddress
      */
@@ -89,8 +90,6 @@ class CheckoutService
             if ($couponId !== null) {
                 $coupon->increment('used_count');
             }
-
-            $this->cart->clear();
 
             return $order;
         });

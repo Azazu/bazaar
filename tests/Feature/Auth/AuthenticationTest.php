@@ -48,7 +48,8 @@ test('navigation menu can be rendered', function () {
 
     $this->actingAs($user);
 
-    $response = $this->get('/dashboard');
+    // The dashboard is the storefront's "My orders" page now; the profile still uses the Breeze layout.
+    $response = $this->get('/profile');
 
     $response
         ->assertOk()

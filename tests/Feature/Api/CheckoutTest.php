@@ -43,7 +43,7 @@ it('places a pending order split into per-store sub-orders and empties the cart'
         ->assertJsonCount(2, 'data.items')
         ->assertJsonCount(2, 'data.sub_orders');
 
-    $this->getJson('/api/v1/cart')->assertJsonPath('data.count', 0);
+    $this->getJson('/api/v1/cart')->assertJsonPath('data.count', 3); // cart empties on payment, not on checkout
 });
 
 it('rejects checkout with an empty cart', function () {
@@ -100,6 +100,7 @@ it('pays a pending order in the sandbox and decrements stock', function () {
         ->assertJsonPath('data.sub_orders.0.status', 'paid');
 
     expect($variant->fresh()->stock)->toBe(3);
+    $this->getJson('/api/v1/cart')->assertJsonPath('data.count', 0); // purchased lines released
 });
 
 it('refuses to pay an order that is not pending', function () {

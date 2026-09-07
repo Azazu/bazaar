@@ -7,7 +7,7 @@ use App\Services\Cart\CartService;
 use App\Services\Checkout\CheckoutService;
 use App\States\Order\Pending;
 
-it('places a pending order from the cart and clears it', function () {
+it('places a pending order from the cart and keeps the cart until payment', function () {
     $user = User::factory()->create();
     $variant = ProductVariant::factory()->create(['price_cents' => 1000]);
 
@@ -27,7 +27,38 @@ it('places a pending order from the cart and clears it', function () {
         ->and($order->subtotal_cents)->toBe(3000)
         ->and($order->shipping_cents)->toBe(500)
         ->and($order->total_cents)->toBe(3500)
-        ->and(app(CartService::class)->items())->toBeEmpty();
+        ->and(app(CartService::class)->count())->toBe(3); // an abandoned checkout doesn't lose the basket
+});
+
+it('removes only the purchased lines from the cart when the order is paid', function () {
+    $buyer = User::factory()->create();
+    $bought = ProductVariant::factory()->create(['stock' => 5]);
+    $later = ProductVariant::factory()->create(['stock' => 5]);
+
+    $this->actingAs($buyer);
+    app(CartService::class)->add($bought->id, 2);
+    $order = app(CheckoutService::class)->place($buyer, [
+        'name' => 'A', 'line1' => 'B', 'city' => 'C', 'postcode' => '12345', 'country' => 'US',
+    ], 'standard');
+    app(CartService::class)->add($later->id); // picked after checking out
+
+    pay($order);
+
+    expect(app(CartService::class)->items()->pluck('variant.id')->all())->toBe([$later->id]);
+});
+
+it('lists the buyer\'s orders on the dashboard with a shortcut to pay pending ones', function () {
+    $buyer = User::factory()->create();
+    $mine = Order::factory()->create(['buyer_id' => $buyer->id]);
+    $theirs = Order::factory()->create(); // someone else's
+
+    $this->actingAs($buyer)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee('My orders')
+        ->assertSee("Order #{$mine->id}")
+        ->assertDontSee("Order #{$theirs->id}")
+        ->assertSee('Pay now');
 });
 
 it('snapshots the line item price and name at purchase time', function () {

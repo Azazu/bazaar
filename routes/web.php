@@ -4,7 +4,8 @@ use App\Http\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
-Route::view('dashboard', 'dashboard')
+// The buyer's home: their orders (pending ones link straight to payment).
+Volt::route('dashboard', 'pages.orders.index')
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
