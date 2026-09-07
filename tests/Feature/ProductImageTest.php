@@ -1,6 +1,6 @@
 <?php
 
-use App\Jobs\ProcessProductImage;
+use App\Jobs\ProcessImage;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\User;
@@ -54,7 +54,7 @@ it('queues the processing job when an image is added', function () {
 
     $image = Product::factory()->create()->images()->create(['path' => 'products/x.jpg']);
 
-    Bus::assertDispatched(ProcessProductImage::class, fn (ProcessProductImage $job) => $job->image->is($image));
+    Bus::assertDispatched(ProcessImage::class, fn (ProcessImage $job) => $job->path === $image->path);
 });
 
 it('removes the original and all derivatives when the image is deleted', function () {
@@ -114,4 +114,16 @@ it('renders the gallery editor on the admin product form', function () {
         ->assertOk()
         ->assertSee('Add image')
         ->assertSee('a.webp'); // FilePond gets the existing file via JSON state (slashes escaped)
+});
+
+it('removes image files when the product itself is deleted', function () {
+    $product = Product::factory()->create();
+    $image = storedImage($product);
+    app(ImageProcessor::class)->process($image);
+
+    $product->delete();
+
+    Storage::disk('public')->assertMissing('products/1/a.webp');
+    Storage::disk('public')->assertMissing('products/1/a-card.webp');
+    expect(ProductImage::count())->toBe(0);
 });

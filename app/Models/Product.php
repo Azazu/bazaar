@@ -26,6 +26,12 @@ class Product extends Model
     /** @use HasFactory<ProductFactory> */
     use HasFactory, Searchable;
 
+    protected static function booted(): void
+    {
+        // The FK cascade would drop the rows silently; going through the models removes the files too.
+        static::deleting(fn (self $product) => $product->images->each->delete());
+    }
+
     protected $fillable = ['store_id', 'title', 'slug', 'description', 'price_cents', 'currency', 'status'];
 
     protected function casts(): array

@@ -11,7 +11,7 @@ state(['product', 'justAdded' => null, 'rating' => 5, 'body' => '', 'reviewSubmi
 mount(function (Product $product) {
     abort_unless($product->isVisible(), 404); // draft/archived, or the store isn't active
 
-    $this->product = $product->load('variants', 'images');
+    $this->product = $product->load('variants', 'images', 'store');
 });
 
 $reviews = computed(fn () => $this->product->reviews()->approved()->with('user')->latest()->get());
@@ -97,6 +97,15 @@ $submitReview = function () {
         @endif
 
         <div class="flex-1 mt-6 md:mt-0">
+            @if ($product->store)
+                <p class="flex items-center gap-2 text-sm text-gray-500 mb-3">
+                    @if ($logo = $product->store->logoUrl('thumb'))
+                        <img src="{{ $logo }}" alt="" class="w-6 h-6 rounded-full object-cover bg-gray-100">
+                    @endif
+                    {{ __('Sold by') }} <span class="font-medium text-gray-700">{{ $product->store->name }}</span>
+                </p>
+            @endif
+
             <p class="text-gray-600">{{ $product->description }}</p>
 
             <h2 class="font-semibold mt-6 mb-2">{{ __('Variants') }}</h2>

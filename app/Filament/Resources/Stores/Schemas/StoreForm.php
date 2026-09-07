@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Stores\Schemas;
 
 use App\Enums\StoreStatus;
+use App\Services\Media\ImageProcessor;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -23,7 +25,13 @@ class StoreForm
                     ->required(),
                 Textarea::make('description')
                     ->columnSpanFull(),
-                TextInput::make('logo'),
+                FileUpload::make('logo')
+                    ->disk(ImageProcessor::DISK)
+                    ->directory('stores')
+                    ->image()
+                    ->avatar()
+                    ->imageEditor()
+                    ->maxSize(4 * 1024),
                 Select::make('status')
                     ->options(StoreStatus::class)
                     ->default('pending')

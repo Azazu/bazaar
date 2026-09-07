@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -18,6 +19,10 @@ class StoresTable
     {
         return $table
             ->columns([
+                ImageColumn::make('logo')
+                    ->label('')
+                    ->state(fn (Store $record): ?string => $record->logoUrl('thumb'))
+                    ->circular(),
                 TextColumn::make('owner.name')
                     ->searchable(),
                 TextColumn::make('name')

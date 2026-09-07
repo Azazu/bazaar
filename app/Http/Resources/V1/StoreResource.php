@@ -20,6 +20,7 @@ class StoreResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'slug' => $this->slug,
+            'logo' => $this->logoUrl('thumb'),
         ];
     }
 }

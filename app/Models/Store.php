@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\StoreStatus;
+use App\Jobs\ProcessImage;
+use App\Services\Media\ImageProcessor;
 use Database\Factories\StoreFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,6 +22,36 @@ class Store extends Model
     protected function casts(): array
     {
         return ['status' => StoreStatus::class];
+    }
+
+    protected static function booted(): void
+    {
+        // Same pipeline as product images: resize in the background, keep the disk tidy.
+        static::saved(function (self $store) {
+            if (! $store->wasChanged('logo')) {
+                return;
+            }
+
+            if ($previous = $store->getOriginal('logo')) {
+                app(ImageProcessor::class)->deletePath($previous);
+            }
+
+            if ($store->logo) {
+                ProcessImage::dispatch($store->logo);
+            }
+        });
+
+        static::deleted(function (self $store) {
+            if ($store->logo) {
+                app(ImageProcessor::class)->deletePath($store->logo);
+            }
+        });
+    }
+
+    /** Logo URL for the given size, or null when the store has none. */
+    public function logoUrl(string $size = 'thumb'): ?string
+    {
+        return $this->logo ? ImageProcessor::urlFor($this->logo, $size) : null;
     }
 
     /** @return BelongsTo<User, $this> */
