@@ -40,4 +40,27 @@ class StockManager
             }
         });
     }
+
+    /**
+     * Put the units of an order back on the shelf (cancellation or refund).
+     *
+     * Locked and transactional for the same reason as the decrement: a restore racing
+     * a concurrent purchase must not read a stale quantity and clobber it.
+     */
+    public function restoreForOrder(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            foreach ($order->items as $item) {
+                if ($item->product_variant_id === null) {
+                    continue;
+                }
+
+                $variant = ProductVariant::whereKey($item->product_variant_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                $variant?->increment('stock', $item->qty);
+            }
+        });
+    }
 }

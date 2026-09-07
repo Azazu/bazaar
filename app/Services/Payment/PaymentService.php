@@ -39,6 +39,23 @@ class PaymentService
     }
 
     /**
+     * Return the money for an order: refund the succeeded payment at the provider and
+     * record it. Called by OrderService before the order itself changes state.
+     */
+    public function refund(Order $order): void
+    {
+        $payment = $order->payments()->where('status', 'succeeded')->latest()->first();
+
+        if ($payment === null) {
+            return; // nothing was ever charged
+        }
+
+        $this->gateway->refund($payment);
+
+        $payment->update(['status' => 'refunded']);
+    }
+
+    /**
      * Handle a "payment succeeded" event (in production: a Stripe webhook).
      *
      * Idempotent by design — a provider may deliver the same event more than once:

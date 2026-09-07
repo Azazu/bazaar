@@ -6,6 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 
@@ -39,6 +40,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Paying an order that is no longer pending is a state conflict, not a server error.
         $exceptions->render(fn (OrderNotPayableException $e, Request $request) => $request->is('api/*')
+            ? response()->json(['message' => $e->getMessage()], 409)
+            : null);
+
+        // Same for any transition the state machine rejects (e.g. cancelling a shipped order).
+        $exceptions->render(fn (CouldNotPerformTransition $e, Request $request) => $request->is('api/*')
             ? response()->json(['message' => $e->getMessage()], 409)
             : null);
     })->create();

@@ -3,6 +3,7 @@
 use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Services\Payment\PaymentService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,33 @@ expect()->extend('toBeOne', function () {
 | global functions to help you to reduce the number of lines of code in your test files.
 |
 */
+
+/** Build a pending order with a single line for the given variant. */
+function orderForVariant(ProductVariant $variant, int $qty): Order
+{
+    $order = Order::factory()->create([
+        'subtotal_cents' => $variant->price_cents * $qty,
+        'shipping_cents' => 0,
+        'total_cents' => $variant->price_cents * $qty,
+    ]);
+
+    $order->items()->create([
+        'product_variant_id' => $variant->id,
+        'product_title' => $variant->product?->title,
+        'variant_name' => $variant->name,
+        'unit_price_cents' => $variant->price_cents,
+        'qty' => $qty,
+    ]);
+
+    return $order->load('items');
+}
+
+/** Pay an order through the (sandbox) payment service. */
+function pay(Order $order): void
+{
+    $payment = app(PaymentService::class)->start($order);
+    app(PaymentService::class)->confirm('evt_'.uniqid(), $payment->transaction_id);
+}
 
 /** Give a user a paid order containing the variant (so they qualify to review it). */
 function paidPurchase(User $user, ProductVariant $variant): void

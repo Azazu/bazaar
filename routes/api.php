@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\CartController;
 use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\CheckoutController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\OrderCancellationController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\OrderPaymentController;
 use App\Http\Controllers\Api\V1\ProductController;
@@ -41,6 +42,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
         Route::get('orders/{order}', [OrderController::class, 'show'])->name('orders.show');
         Route::post('orders/{order}/pay', OrderPaymentController::class)->name('orders.pay');
+        Route::post('orders/{order}/cancel', OrderCancellationController::class)->name('orders.cancel');
 
         Route::post('products/{product:slug}/reviews', [ReviewController::class, 'store'])->name('products.reviews.store');
     });

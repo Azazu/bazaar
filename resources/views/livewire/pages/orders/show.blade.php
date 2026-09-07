@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Order;
+use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
 use Illuminate\Support\Str;
 
@@ -13,6 +14,13 @@ mount(function (Order $order) {
 
     $this->order = $order->load('items', 'coupon');
 });
+
+// Buyer-side cancellation; OrderService refunds and restocks a paid order.
+$cancel = function () {
+    $this->authorize('cancel', $this->order);
+
+    $this->order = app(OrderService::class)->cancel($this->order)->load('items', 'coupon');
+};
 
 // Sandbox payment: start the intent, then simulate the provider's "succeeded" callback.
 $pay = function () {
@@ -59,6 +67,13 @@ $pay = function () {
             <p class="text-xs text-gray-400 mt-1">{{ __('Sandbox payment — no real charge.') }}</p>
         </div>
     @endif
+
+    @can('cancel', $order)
+        <div class="mt-6">
+            <button wire:click="cancel" wire:confirm="{{ __('Cancel this order?') }}"
+                    class="text-sm text-red-600 hover:underline">{{ __('Cancel order') }}</button>
+        </div>
+    @endcan
 
     <a href="{{ route('catalog.index') }}" class="inline-block mt-6 text-indigo-600 underline">{{ __('Continue shopping') }}</a>
 </div>
