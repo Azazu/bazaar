@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Order;
+use App\Models\ProductVariant;
 use App\Models\SubOrder;
 use App\States\Order\Delivered;
 use App\States\Order\Paid;
@@ -8,6 +9,7 @@ use App\States\Order\Processing;
 use App\States\Order\Shipped;
 use App\States\SubOrder\Cancelled;
 use App\States\SubOrder\Delivered as SubDelivered;
+use App\States\SubOrder\Paid as SubPaid;
 use App\States\SubOrder\Processing as SubProcessing;
 use App\States\SubOrder\Shipped as SubShipped;
 
@@ -67,7 +69,28 @@ it('does not touch a parent that is not in fulfilment', function () {
     $order = Order::factory()->create(); // pending: payment hasn't happened
     $a = SubOrder::factory()->create(['order_id' => $order->id, 'status' => 'pending']);
 
-    $a->status->transitionTo(App\States\SubOrder\Paid::class); // MarkSubOrdersPaid does this on payment
+    $a->status->transitionTo(SubPaid::class); // MarkSubOrdersPaid does this on payment
 
     expect($order->fresh()->status)->not->toBeInstanceOf(Paid::class);
+});
+
+it('keeps a multi-store order paid until a vendor actually starts fulfilment', function () {
+    // Real payment flow: PaymentService → OrderPaid → MarkSubOrdersPaid → per-sub-order sync.
+    $variantA = ProductVariant::factory()->create(['stock' => 5]);
+    $variantB = ProductVariant::factory()->create(['stock' => 5]);
+    $order = orderForVariant($variantA, 1);
+    $a = SubOrder::factory()->create(['order_id' => $order->id, 'store_id' => $variantA->product->store_id]);
+    $b = SubOrder::factory()->create(['order_id' => $order->id, 'store_id' => $variantB->product->store_id]);
+
+    pay($order);
+
+    expect($order->fresh()->status)->toBeInstanceOf(Paid::class)
+        ->and($a->fresh()->status)->toBeInstanceOf(SubPaid::class)
+        ->and($b->fresh()->status)->toBeInstanceOf(SubPaid::class)
+        ->and($order->fresh()->isCancellable())->toBeTrue(); // nobody has started packing yet
+
+    $a->fresh()->status->transitionTo(SubProcessing::class);
+
+    expect($order->fresh()->status)->toBeInstanceOf(Processing::class)
+        ->and($order->fresh()->isCancellable())->toBeFalse();
 });

@@ -11,6 +11,7 @@ use App\States\Order\Shipped;
 use App\States\SubOrder\Cancelled as SubOrderCancelled;
 use App\States\SubOrder\Delivered as SubOrderDelivered;
 use App\States\SubOrder\Paid as SubOrderPaid;
+use App\States\SubOrder\Pending as SubOrderPending;
 use App\States\SubOrder\Refunded as SubOrderRefunded;
 use App\States\SubOrder\Shipped as SubOrderShipped;
 use Database\Factories\OrderFactory;
@@ -84,6 +85,10 @@ class Order extends Model
      * everything delivered → delivered, everything at least shipped → shipped, anything
      * started → processing. Cancelled/refunded sub-orders don't count. Moves one legal
      * step at a time so the state machine (and its listeners) see every transition.
+     *
+     * Payment propagates to sub-orders one by one (MarkSubOrdersPaid), so while any active
+     * sub-order is still pending the picture is incomplete: a pending sibling is "not yet
+     * paid", not "in fulfilment", and must not push the parent to processing.
      */
     public function syncStateFromSubOrders(): void
     {
@@ -93,6 +98,10 @@ class Order extends Model
         $ladder = [Paid::class, Processing::class, Shipped::class, Delivered::class];
 
         if ($active->isEmpty() || ! in_array($this->status::class, [Paid::class, Processing::class, Shipped::class], true)) {
+            return;
+        }
+
+        if ($active->contains(fn (SubOrder $s) => $s->status instanceof SubOrderPending)) {
             return;
         }
 
