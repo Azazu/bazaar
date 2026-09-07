@@ -8,6 +8,7 @@ use App\Models\ProductVariant;
 use App\Models\Review;
 use App\Models\Store;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\Sequence;
 use Illuminate\Database\Seeder;
 
 class CatalogSeeder extends Seeder
@@ -20,11 +21,19 @@ class CatalogSeeder extends Seeder
         $categories = Category::factory(5)->create();
         Category::flushCache(); // seeders run WithoutModelEvents, so the cache isn't invalidated for us
 
-        // Vendors, each owning one active store.
+        // Vendors with predictable demo logins (vendor1@bazaar.test … / "password"), one active store each.
         $stores = User::factory(4)
+            ->sequence(fn (Sequence $seq) => [
+                'name' => 'Vendor '.($seq->index + 1),
+                'email' => 'vendor'.($seq->index + 1).'@bazaar.test',
+            ])
             ->create()
             ->each(fn (User $vendor) => $vendor->assignRole('vendor'))
-            ->map(fn (User $vendor) => Store::factory()->create(['owner_id' => $vendor->id]));
+            ->map(fn (User $vendor) => Store::factory()->create([
+                'owner_id' => $vendor->id,
+                'name' => $vendor->name.' Shop',
+                'slug' => str($vendor->name.' Shop')->slug()->toString(),
+            ]));
 
         $products = Product::factory(40)
             ->recycle($stores) // distribute products across the seeded stores
