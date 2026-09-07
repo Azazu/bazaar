@@ -57,11 +57,29 @@ $submitReview = function () {
     <div class="mt-4 md:flex md:gap-8 md:items-start">
         @if ($product->images->isNotEmpty())
             {{-- Gallery: compact column, big picture + thumbnails; purely client-side --}}
-            <div class="md:w-80 shrink-0" x-data="{ active: 0 }" wire:ignore>
-                <div class="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
+            <div class="md:w-80 shrink-0" x-data="{ active: 0, open: false, count: {{ $product->images->count() }} }" wire:ignore
+                 @keydown.escape.window="open = false">
+                <button type="button" @click="open = true" class="block aspect-square w-full bg-gray-100 rounded-lg overflow-hidden cursor-zoom-in"
+                        aria-label="{{ __('Enlarge image') }}">
                     @foreach ($product->images as $image)
                         <img x-show="active === {{ $loop->index }}" src="{{ $image->url('large') }}"
                              alt="{{ $product->title }}" class="w-full h-full object-contain" @if (! $loop->first) x-cloak @endif>
+                    @endforeach
+                </button>
+
+                {{-- Lightbox: same `active` index, full-screen; Esc / backdrop / × close it --}}
+                <div x-show="open" x-cloak x-transition.opacity @click.self="open = false"
+                     class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6" role="dialog" aria-modal="true">
+                    <button type="button" @click="open = false" class="absolute top-4 right-5 text-white/80 hover:text-white text-4xl leading-none" aria-label="{{ __('Close') }}">&times;</button>
+                    <template x-if="count > 1">
+                        <div>
+                            <button type="button" @click="active = (active + count - 1) % count" class="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white text-5xl leading-none px-3" aria-label="{{ __('Previous image') }}">&lsaquo;</button>
+                            <button type="button" @click="active = (active + 1) % count" class="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white text-5xl leading-none px-3" aria-label="{{ __('Next image') }}">&rsaquo;</button>
+                        </div>
+                    </template>
+                    @foreach ($product->images as $image)
+                        <img x-show="active === {{ $loop->index }}" src="{{ $image->url('large') }}"
+                             alt="{{ $product->title }}" class="max-h-full max-w-full object-contain rounded" x-cloak>
                     @endforeach
                 </div>
                 @if ($product->images->count() > 1)

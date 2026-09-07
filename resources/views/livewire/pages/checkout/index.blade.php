@@ -80,7 +80,8 @@ $place = function () {
 ?>
 
 <div class="max-w-3xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-6">{{ __('Checkout') }}</h1>
+    <a href="{{ route('cart.index') }}" class="text-sm text-gray-500">&larr; {{ __('Back to cart') }}</a>
+    <h1 class="text-2xl font-bold mt-2 mb-6">{{ __('Checkout') }}</h1>
 
     @if ($this->items->isEmpty())
         <p class="text-gray-500">{{ __('Your cart is empty.') }}

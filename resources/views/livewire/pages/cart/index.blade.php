@@ -46,7 +46,10 @@ $remove = function (int $variantId) {
         </ul>
 
         <div class="flex items-center justify-between mt-6">
-            <span class="text-lg font-semibold">{{ __('Total') }}: {{ money($this->total) }}</span>
+            <div>
+                <span class="text-lg font-semibold">{{ __('Total') }}: {{ money($this->total) }}</span>
+                <a href="{{ route('catalog.index') }}" class="ms-4 text-sm text-indigo-600 underline">{{ __('Continue shopping') }}</a>
+            </div>
             @auth
                 <a href="{{ route('checkout.index') }}" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
                     {{ __('Checkout') }}

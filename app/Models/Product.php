@@ -18,6 +18,8 @@ use Laravel\Scout\Searchable;
 /**
  * @property-read float|string|null $reviews_avg_rating  present after withRating()
  * @property-read int $reviews_count                     present after withRating()
+ * @property-read int|string|null $min_price_cents      present after withPriceRange()
+ * @property-read int|string|null $max_price_cents      present after withPriceRange()
  */
 class Product extends Model
 {
@@ -121,6 +123,34 @@ class Product extends Model
         $query
             ->withAvg(['reviews as reviews_avg_rating' => fn (Builder $q) => $q->where('approved', true)], 'rating')
             ->withCount(['reviews as reviews_count' => fn (Builder $q) => $q->where('approved', true)]);
+    }
+
+    /**
+     * Cheapest and dearest variant, as aggregates — the card shows a range instead of the
+     * base price, which is otherwise unrelated to what the customer can actually buy.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeWithPriceRange(Builder $query): void
+    {
+        $query
+            ->withMin('variants as min_price_cents', 'price_cents')
+            ->withMax('variants as max_price_cents', 'price_cents');
+    }
+
+    /** "$40.00" or "$40.00 – $180.00"; needs withPriceRange(), otherwise falls back to the base price. */
+    public function priceLabel(): string
+    {
+        $min = $this->min_price_cents === null ? null : (int) $this->min_price_cents;
+        $max = $this->max_price_cents === null ? null : (int) $this->max_price_cents;
+
+        if ($min === null || $max === null) {
+            return money($this->price_cents, $this->currency);
+        }
+
+        return $min === $max
+            ? money($min, $this->currency)
+            : money($min, $this->currency).' – '.money($max, $this->currency);
     }
 
     /**

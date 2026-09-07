@@ -50,6 +50,7 @@ class ProductSearch
             ->visible()
             ->with(['store', 'variants', 'primaryImage'])
             ->withRating()
+            ->withPriceRange()
             ->filter($filters);
     }
 }

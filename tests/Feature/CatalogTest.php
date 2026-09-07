@@ -74,3 +74,30 @@ it('filters the catalog by category and stock', function () {
         ->assertSee('Wool Scarf')
         ->assertDontSee('Steel Pan');
 });
+
+it('shows the variant price range on the catalog card', function () {
+    $ranged = Product::factory()->create(['title' => 'Ranged Thing', 'price_cents' => 1000]);
+    ProductVariant::factory()->for($ranged)->create(['price_cents' => 4000]);
+    ProductVariant::factory()->for($ranged)->create(['price_cents' => 18000]);
+    $flat = Product::factory()->create(['title' => 'Flat Thing', 'price_cents' => 999]);
+    ProductVariant::factory()->for($flat)->create(['price_cents' => 2500]);
+
+    $this->get(route('catalog.index'))
+        ->assertSee('$40.00 – $180.00')
+        ->assertSee('$25.00')
+        ->assertDontSee('$9.99');
+});
+
+it('shows active filters as removable chips', function () {
+    $category = Category::factory()->create(['name' => 'Garden']);
+
+    Volt::test('pages.catalog.index')
+        ->set('q', 'hose')
+        ->set('category', $category->slug)
+        ->set('in_stock', true)
+        ->assertSee('Search: "hose"')
+        ->assertSee('Remove filter Garden')
+        ->assertSee('Remove filter In stock')
+        ->set('q', '')
+        ->assertDontSee('Search: "hose"');
+});

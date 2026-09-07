@@ -93,6 +93,29 @@ $clearFilters = function () {
         </div>
     </div>
 
+    @php
+        // Active filters as removable chips; `sort` always has a value, so it isn't one.
+        $chips = array_filter([
+            'q' => $q !== '' ? __('Search: ":term"', ['term' => $q]) : null,
+            'category' => $category !== '' ? $categories->firstWhere('slug', $category)?->name : null,
+            'min_price' => cents($min_price) !== null ? __('From :price', ['price' => money(cents($min_price))]) : null,
+            'max_price' => cents($max_price) !== null ? __('Up to :price', ['price' => money(cents($max_price))]) : null,
+            'min_rating' => $min_rating !== '' ? $min_rating.'+ ★' : null,
+            'in_stock' => $in_stock ? __('In stock') : null,
+        ]);
+    @endphp
+    @if ($chips !== [])
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            @foreach ($chips as $field => $label)
+                <button type="button" wire:click="$set('{{ $field }}', {{ $field === 'in_stock' ? 'false' : "''" }})"
+                        class="inline-flex items-center gap-1 rounded-full bg-indigo-50 text-indigo-700 px-3 py-1 text-sm hover:bg-indigo-100"
+                        aria-label="{{ __('Remove filter :filter', ['filter' => $label]) }}">
+                    {{ $label }} <span aria-hidden="true">&times;</span>
+                </button>
+            @endforeach
+        </div>
+    @endif
+
     <p class="text-sm text-gray-500 mb-4">{{ trans_choice('{0} No products found|{1} :count product|[2,*] :count products', $products->total(), ['count' => $products->total()]) }}</p>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -107,7 +130,7 @@ $clearFilters = function () {
                 @endif
                 <h2 class="font-medium">{{ $product->title }}</h2>
                 <div class="flex items-center justify-between mt-1">
-                    <p class="text-gray-600">{{ money($product->price_cents) }}</p>
+                    <p class="text-gray-600">{{ $product->priceLabel() }}</p>
                     @if ($product->reviews_count > 0)
                         <p class="text-sm text-yellow-500">&#9733; {{ number_format($product->reviews_avg_rating, 1) }}
                             <span class="text-gray-400">({{ $product->reviews_count }})</span></p>

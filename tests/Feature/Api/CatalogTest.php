@@ -145,3 +145,15 @@ it('filters by minimum rating using approved reviews only', function () {
         ->assertJsonPath('data.0.id', $good->id)
         ->assertJsonPath('data.0.rating.average', 4.5);
 });
+
+it('exposes the variant price range on list items', function () {
+    $product = Product::factory()->create(['price_cents' => 1000]);
+    ProductVariant::factory()->for($product)->create(['price_cents' => 4000]);
+    ProductVariant::factory()->for($product)->create(['price_cents' => 18000]);
+
+    $this->getJson('/api/v1/products')
+        ->assertOk()
+        ->assertJsonPath('data.0.price_range.min_cents', 4000)
+        ->assertJsonPath('data.0.price_range.max_cents', 18000)
+        ->assertJsonPath('data.0.price_range.label', '$40.00 – $180.00');
+});
