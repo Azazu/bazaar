@@ -12,4 +12,12 @@ abstract class TestCase extends BaseTestCase
     protected bool $seed = true;
 
     protected string $seeder = RoleSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Views use @vite; tests must not depend on a built manifest (CI builds assets in its own job).
+        $this->withoutVite();
+    }
 }
