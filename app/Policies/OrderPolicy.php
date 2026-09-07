@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\Order;
 use App\Models\User;
-use App\States\Order\Cancelled;
 use App\States\Order\Pending;
 
 class OrderPolicy
@@ -21,10 +20,10 @@ class OrderPolicy
         return $this->view($user, $order) && $order->status instanceof Pending;
     }
 
-    /** The buyer may cancel their own order as long as fulfilment hasn't started (pending or paid). */
+    /** The buyer may cancel their own order as long as no vendor has started fulfilment. */
     public function cancel(User $user, Order $order): bool
     {
-        return $this->view($user, $order) && $order->status->canTransitionTo(Cancelled::class);
+        return $this->view($user, $order) && $order->isCancellable();
     }
 
     /** Refunds are an admin operation (Gate::before); buyers ask support. */

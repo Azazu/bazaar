@@ -32,7 +32,10 @@ class OrderService
     /** Stop an order before fulfilment. A paid one is refunded and its stock goes back. */
     public function cancel(Order $order): Order
     {
-        $this->assertCanTransition($order, Cancelled::class);
+        // The parent's state alone isn't enough: once any vendor has shipped, this is a refund, not a cancel.
+        if (! $order->isCancellable()) {
+            throw CouldNotPerformTransition::notFound($order->status->getValue(), Cancelled::getMorphClass(), $order);
+        }
 
         $wasPaid = $order->status instanceof Paid;
 

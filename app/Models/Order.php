@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\States\Order\Cancelled;
 use App\States\Order\OrderState;
+use App\States\SubOrder\Cancelled as SubOrderCancelled;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -67,5 +69,16 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * Cancellation means "stop before fulfilment". The parent's own state machine allows
+     * pending/paid → cancelled, but the parent doesn't move while vendors work on their
+     * sub-orders — so it must also check that none of them has gone past paid.
+     */
+    public function isCancellable(): bool
+    {
+        return $this->status->canTransitionTo(Cancelled::class)
+            && $this->subOrders->every(fn (SubOrder $subOrder) => $subOrder->status->canTransitionTo(SubOrderCancelled::class));
     }
 }

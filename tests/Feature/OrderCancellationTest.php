@@ -82,6 +82,26 @@ it('refuses an illegal transition before any side effect', function () {
         ->and(Payment::where('order_id', $order->id)->value('status'))->toBe('succeeded'); // nothing refunded
 });
 
+it('refuses to cancel once any vendor has started fulfilment — that is a refund', function () {
+    [$order, $variant, $subOrder] = paidOrderWithStock();
+    $subOrder->refresh(); // pay() moved it to paid behind this instance's back
+    $subOrder->status->transitionTo(App\States\SubOrder\Processing::class);
+    $subOrder->status->transitionTo(App\States\SubOrder\Shipped::class);
+    $order->refresh();
+
+    expect($order->isCancellable())->toBeFalse()
+        ->and($order->buyer->can('cancel', $order))->toBeFalse();
+    expect(fn () => app(OrderService::class)->cancel($order))->toThrow(CouldNotPerformTransition::class);
+    expect($variant->fresh()->stock)->toBe(3); // nothing restored for shipped goods
+
+    // ...but a refund is still the right tool and does everything a cancellation would.
+    app(OrderService::class)->refund($order->fresh());
+
+    expect($order->fresh()->status)->toBeInstanceOf(Refunded::class)
+        ->and($subOrder->fresh()->status)->toBeInstanceOf(SubOrderRefunded::class)
+        ->and($variant->fresh()->stock)->toBe(5);
+});
+
 it('lets a buyer cancel their own order while it is pending or paid, and no later', function () {
     $buyer = User::factory()->create();
     $pending = Order::factory()->create(['buyer_id' => $buyer->id]);
