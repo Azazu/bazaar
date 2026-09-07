@@ -12,7 +12,7 @@ state(['product', 'justAdded' => null, 'rating' => 5, 'body' => '', 'reviewSubmi
 mount(function (Product $product) {
     abort_if($product->status !== ProductStatus::Published, 404); // draft/archived → 404
 
-    $this->product = $product->load('variants');
+    $this->product = $product->load('variants', 'images');
 });
 
 $reviews = computed(fn () => $this->product->reviews()->approved()->with('user')->latest()->get());
@@ -53,7 +53,31 @@ $submitReview = function () {
 <div class="max-w-5xl mx-auto p-6">
     <a href="{{ route('catalog.index') }}" class="text-sm text-gray-500">&larr; {{ __('Catalog') }}</a>
     <h1 class="text-2xl font-bold mt-2">{{ $product->title }}</h1>
-    <p class="text-gray-600 mt-2">{{ $product->description }}</p>
+
+    @if ($product->images->isNotEmpty())
+        {{-- Gallery: big picture + thumbnails; purely client-side, no round trips --}}
+        <div class="mt-4 grid gap-3 md:grid-cols-[1fr_5rem]" x-data="{ active: 0 }" wire:ignore>
+            <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                @foreach ($product->images as $image)
+                    <img x-show="active === {{ $loop->index }}" src="{{ $image->url('large') }}"
+                         alt="{{ $product->title }}" class="w-full h-full object-contain" @if (! $loop->first) x-cloak @endif>
+                @endforeach
+            </div>
+            @if ($product->images->count() > 1)
+                <div class="flex md:flex-col gap-2">
+                    @foreach ($product->images as $image)
+                        <button type="button" @click="active = {{ $loop->index }}"
+                                :class="active === {{ $loop->index }} ? 'ring-2 ring-indigo-500' : 'opacity-70 hover:opacity-100'"
+                                class="w-20 h-20 rounded overflow-hidden bg-gray-100">
+                            <img src="{{ $image->url('thumb') }}" alt="" class="w-full h-full object-cover">
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    @endif
+
+    <p class="text-gray-600 mt-4">{{ $product->description }}</p>
 
     <h2 class="font-semibold mt-6 mb-2">{{ __('Variants') }}</h2>
     <ul class="divide-y border rounded-lg bg-white">

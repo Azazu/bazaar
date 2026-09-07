@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             ->assignRole('admin');
 
         $this->call(CatalogSeeder::class);
+        $this->call(ProductImageSeeder::class);
         $this->call(CouponSeeder::class);
     }
 }

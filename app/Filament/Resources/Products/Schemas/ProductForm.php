@@ -3,6 +3,9 @@
 namespace App\Filament\Resources\Products\Schemas;
 
 use App\Enums\ProductStatus;
+use App\Models\ProductImage;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -32,6 +35,24 @@ class ProductForm
                     ->options(ProductStatus::class)
                     ->default('draft')
                     ->required(),
+                // Gallery: one row per image, drag to reorder; the first one is the primary image.
+                Repeater::make('images')
+                    ->relationship()
+                    ->orderColumn('position')
+                    ->reorderableWithDragAndDrop()
+                    ->schema([
+                        FileUpload::make('path')
+                            ->label('Image')
+                            ->disk(ProductImage::DISK)
+                            ->directory('products')
+                            ->image()
+                            ->imageEditor()
+                            ->maxSize(8 * 1024)
+                            ->required(),
+                    ])
+                    ->defaultItems(0)
+                    ->addActionLabel('Add image')
+                    ->columnSpanFull(),
             ]);
     }
 }

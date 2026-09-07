@@ -99,7 +99,12 @@ $clearFilters = function () {
         @foreach ($products as $product)
             <a href="{{ route('products.show', $product) }}" wire:key="product-{{ $product->id }}"
                class="border rounded-lg p-4 bg-white shadow-sm block hover:shadow-md">
-                <div class="aspect-square bg-gray-100 rounded mb-3"></div> {{-- image placeholder --}}
+                @if ($product->primaryImage)
+                    <img src="{{ $product->primaryImage->url('card') }}" alt="{{ $product->title }}" loading="lazy"
+                         class="aspect-square w-full object-cover rounded mb-3 bg-gray-100">
+                @else
+                    <div class="aspect-square bg-gray-100 rounded mb-3"></div>
+                @endif
                 <h2 class="font-medium">{{ $product->title }}</h2>
                 <div class="flex items-center justify-between mt-1">
                     <p class="text-gray-600">{{ money($product->price_cents) }}</p>

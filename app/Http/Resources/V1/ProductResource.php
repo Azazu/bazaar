@@ -25,6 +25,9 @@ class ProductResource extends JsonResource
                 'average' => round((float) $this->reviews_avg_rating, 1),
                 'count' => (int) $this->reviews_count,
             ]),
+            // Primary image for lists (eager-loaded); the full gallery only on the product itself.
+            'image' => $this->whenLoaded('primaryImage', fn () => $this->primaryImage?->url('card')),
+            'images' => ProductImageResource::collection($this->whenLoaded('images')),
             'store' => StoreResource::make($this->whenLoaded('store')),
             'categories' => CategoryResource::collection($this->whenLoaded('categories')),
             'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),

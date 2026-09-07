@@ -15,6 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\ImageManager;
 use RuntimeException;
 use Stripe\StripeClient;
 
@@ -32,6 +34,9 @@ class AppServiceProvider extends ServiceProvider
             'fake' => new FakePaymentGateway,
             default => throw new RuntimeException('Unknown PAYMENT_GATEWAY: '.config('bazaar.payment_gateway')),
         });
+
+        // GD is what the php image ships with (with WebP); swap for Imagick here if it ever matters.
+        $this->app->singleton(ImageManager::class, fn (): ImageManager => new ImageManager(GdDriver::class));
 
         $this->app->singleton(StripeClient::class, function (): StripeClient {
             $secret = config('services.stripe.secret');

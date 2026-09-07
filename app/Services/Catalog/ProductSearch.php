@@ -48,7 +48,7 @@ class ProductSearch
     {
         return $query
             ->published()
-            ->with(['store', 'variants'])
+            ->with(['store', 'variants', 'primaryImage'])
             ->withRating()
             ->filter($filters);
     }

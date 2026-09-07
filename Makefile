@@ -12,7 +12,7 @@ PHP := $(DC) exec -u www-data -e HOME=/tmp php
 .PHONY: help build up down restart rebuild ps logs \
         sh sh-nginx mysql redis-cli \
         composer install update \
-        artisan migrate migrate-fresh rollback seed tinker key-gen \
+        artisan migrate migrate-fresh rollback seed storage-link tinker key-gen \
         test test-concurrency pint pint-test stan \
         db-reset clean nuke init
 
@@ -82,6 +82,9 @@ migrate-fresh: ## Drop all tables and re-run migrations + seeders (DESTRUCTIVE)
 rollback: ## Roll back the last migration batch
 	$(PHP) php artisan migrate:rollback
 
+storage-link: ## Expose storage/app/public as public/storage (uploaded images)
+	$(PHP) php artisan storage:link
+
 seed: ## Run database seeders
 	$(PHP) php artisan db:seed
 
@@ -147,6 +150,7 @@ init: ## First-time setup: build, up, composer install, key:generate, migrate
 	$(PHP) composer install
 	$(PHP) php artisan key:generate
 	$(PHP) php artisan migrate
+	$(PHP) php artisan storage:link
 
 # Catch-all so positional args (e.g. artisan sub-command) don't fail as missing targets
 %:

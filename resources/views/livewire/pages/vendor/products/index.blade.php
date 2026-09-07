@@ -6,7 +6,7 @@ $products = computed(function () {
     $store = auth()->user()->store;
 
     return $store
-        ? $store->products()->with('variants')->latest()->get()
+        ? $store->products()->with('variants', 'primaryImage')->latest()->get()
         : collect();
 });
 
@@ -27,13 +27,20 @@ $products = computed(function () {
         <ul class="divide-y border rounded-lg bg-white">
             @foreach ($this->products as $product)
                 <li class="flex items-center justify-between p-3" wire:key="product-{{ $product->id }}">
-                    <div>
+                    <div class="flex items-center gap-3">
+                        @if ($product->primaryImage)
+                            <img src="{{ $product->primaryImage->url('thumb') }}" alt="" class="w-12 h-12 rounded object-cover bg-gray-100">
+                        @else
+                            <div class="w-12 h-12 rounded bg-gray-100"></div>
+                        @endif
+                        <div>
                         <p class="font-medium">{{ $product->title }}</p>
                         <p class="text-sm text-gray-500">
                             {{ $product->variants->count() }} {{ __('variants') }} ·
                             {{ __('stock') }}: {{ $product->variants->sum('stock') }} ·
                             {{ ucfirst($product->status->value) }}
                         </p>
+                        </div>
                     </div>
                     <span>{{ money($product->price_cents) }}</span>
                 </li>

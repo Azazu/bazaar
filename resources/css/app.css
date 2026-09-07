@@ -1,3 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Alpine: hide until initialised (product gallery) */
+[x-cloak] { display: none !important; }
