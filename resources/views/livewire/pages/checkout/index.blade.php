@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\CheckoutBlockedException;
 use App\Models\Coupon;
 use App\Services\Cart\CartService;
 use App\Services\Checkout\CheckoutService;
@@ -61,18 +62,24 @@ $place = function () {
 
     $coupon = $this->appliedCode ? Coupon::where('code', $this->appliedCode)->first() : null;
 
-    $order = app(CheckoutService::class)->place(
-        auth()->user(),
-        [
-            'name' => $validated['name'],
-            'line1' => $validated['line1'],
-            'city' => $validated['city'],
-            'postcode' => $validated['postcode'],
-            'country' => strtoupper($validated['country']),
-        ],
-        $validated['shipping_method'],
-        $coupon,
-    );
+    try {
+        $order = app(CheckoutService::class)->place(
+            auth()->user(),
+            [
+                'name' => $validated['name'],
+                'line1' => $validated['line1'],
+                'city' => $validated['city'],
+                'postcode' => $validated['postcode'],
+                'country' => strtoupper($validated['country']),
+            ],
+            $validated['shipping_method'],
+            $coupon,
+        );
+    } catch (CheckoutBlockedException $e) {
+        $this->addError('checkout', $e->getMessage()); // a store went offline while the buyer was filling the form
+
+        return;
+    }
 
     $this->redirect(route('orders.show', $order), navigate: true);
 };
@@ -167,6 +174,7 @@ $place = function () {
                 </select>
             </div>
 
+            <x-input-error :messages="$errors->get('checkout')" class="mt-2" />
             <x-primary-button class="mt-4">{{ __('Place order') }}</x-primary-button>
         </form>
     @endif

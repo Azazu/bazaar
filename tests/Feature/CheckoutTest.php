@@ -1,11 +1,17 @@
 <?php
 
+use App\Enums\StoreStatus;
+use App\Exceptions\CheckoutBlockedException;
 use App\Models\Order;
 use App\Models\ProductVariant;
+use App\Models\SubOrder;
 use App\Models\User;
+use App\Services\Account\AccountService;
 use App\Services\Cart\CartService;
 use App\Services\Checkout\CheckoutService;
 use App\States\Order\Pending;
+use Laravel\Sanctum\Sanctum;
+use Livewire\Volt\Volt;
 
 it('places a pending order from the cart and keeps the cart until payment', function () {
     $user = User::factory()->create();
@@ -93,4 +99,50 @@ it('forbids viewing another buyer\'s order', function () {
     $this->actingAs(User::factory()->create())
         ->get(route('orders.show', $order))
         ->assertForbidden();
+});
+
+/*
+ * HI-001: checkout verifies, on locked rows, that the parties can still trade.
+ */
+
+it('refuses to place an order for a store that was archived or suspended after the cart was filled', function () {
+    $user = User::factory()->create();
+    $variant = ProductVariant::factory()->create();
+    $this->actingAs($user);
+    app(CartService::class)->add($variant->id, 1);
+    $address = ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'];
+
+    $variant->product->store->update(['status' => StoreStatus::Suspended]);
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))
+        ->toThrow(CheckoutBlockedException::class, 'not selling');
+
+    app(AccountService::class)->archiveStore($variant->product->store->fresh()->forceFill(['status' => StoreStatus::Active]));
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))
+        ->toThrow(CheckoutBlockedException::class, 'no longer on the marketplace');
+
+    expect(Order::count())->toBe(0)->and(SubOrder::count())->toBe(0);
+
+    // Same rule, both entry points: the page shows the reason, the API answers 409.
+    Volt::test('pages.checkout.index')
+        ->set(['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US', 'shipping_method' => 'standard'])
+        ->call('place')
+        ->assertHasErrors('checkout')
+        ->assertNoRedirect();
+
+    Sanctum::actingAs($user);
+    $this->postJson('/api/v1/checkout', ['shipping_address' => $address, 'shipping_method' => 'standard'])->assertConflict();
+});
+
+it('refuses to place an order for an account that has been closed', function () {
+    $user = User::factory()->create();
+    $variant = ProductVariant::factory()->create();
+    $this->actingAs($user);
+    app(CartService::class)->add($variant->id, 1);
+    $address = ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'];
+
+    app(AccountService::class)->close($user);
+
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))
+        ->toThrow(CheckoutBlockedException::class, 'closed');
+    expect(Order::count())->toBe(0);
 });

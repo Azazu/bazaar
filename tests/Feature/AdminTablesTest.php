@@ -2,15 +2,6 @@
 
 use App\Models\Coupon;
 use App\Models\Order;
-use App\Models\User;
-
-function admin(): User
-{
-    $admin = User::factory()->create();
-    $admin->assignRole('admin');
-
-    return $admin;
-}
 
 it('formats money in the admin tables', function () {
     Order::factory()->create(['total_cents' => 123456, 'currency' => 'USD']);

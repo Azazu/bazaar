@@ -18,7 +18,8 @@ class ProductForm
         return $schema
             ->components([
                 Select::make('store_id')
-                    ->relationship('store', 'name'),
+                    ->relationship('store', 'name')
+                    ->required(),
                 TextInput::make('title')
                     ->required(),
                 TextInput::make('slug')

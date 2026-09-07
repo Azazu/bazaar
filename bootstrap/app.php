@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\CheckoutBlockedException;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\OrderNotPayableException;
 use Illuminate\Foundation\Application;
@@ -43,6 +44,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Paying an order that is no longer pending is a state conflict, not a server error.
         $exceptions->render(fn (OrderNotPayableException $e, Request $request) => $request->is('api/*')
+            ? response()->json(['message' => $e->getMessage()], 409)
+            : null);
+
+        // The cart can't become an order any more (account closed, store archived/suspended): a conflict, not a 500.
+        $exceptions->render(fn (CheckoutBlockedException $e, Request $request) => $request->is('api/*')
             ? response()->json(['message' => $e->getMessage()], 409)
             : null);
 

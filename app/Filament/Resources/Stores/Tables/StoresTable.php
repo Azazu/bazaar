@@ -5,8 +5,6 @@ namespace App\Filament\Resources\Stores\Tables;
 use App\Enums\StoreStatus;
 use App\Models\Store;
 use Filament\Actions\Action;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -60,10 +58,7 @@ class StoresTable
                     ->action(fn (Store $record) => $record->update(['status' => StoreStatus::Suspended])),
                 EditAction::make(),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            // Stores are archived one at a time (EditStore): each archive is checked for open orders.
+            ->toolbarActions([]);
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Models\Order;
 use App\Models\ProductVariant;
+use App\Models\SubOrder;
 use App\Models\User;
 use App\Services\Payment\PaymentService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -34,6 +35,12 @@ pest()->extend(TestCase::class)
     ->use(DatabaseMigrations::class)
     ->in('Concurrency');
 
+// Schema-upgrade tests roll migrations back and forward, so they need a real (fresh) schema
+// per test rather than RefreshDatabase's transaction.
+pest()->extend(TestCase::class)
+    ->use(DatabaseMigrations::class)
+    ->in('Migrations');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
@@ -59,6 +66,35 @@ expect()->extend('toBeOne', function () {
 | global functions to help you to reduce the number of lines of code in your test files.
 |
 */
+
+/** A user with the admin role (Filament panel access, Gate::before bypass). */
+function admin(): User
+{
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+
+    return $admin;
+}
+
+/**
+ * A paid order for 2 units of a 5-unit variant, with its sub-order and (via OrderPaid) payout.
+ *
+ * @return array{0: Order, 1: ProductVariant, 2: SubOrder}
+ */
+function paidOrderWithStock(): array
+{
+    $variant = ProductVariant::factory()->create(['stock' => 5]);
+    $order = orderForVariant($variant, 2);
+    $subOrder = SubOrder::factory()->create([
+        'order_id' => $order->id,
+        'store_id' => $variant->product->store_id,
+        'subtotal_cents' => $order->subtotal_cents,
+    ]);
+
+    pay($order); // decrements stock to 3, marks the sub-order paid, creates a payout
+
+    return [$order->refresh(), $variant, $subOrder];
+}
 
 /** Build a pending order with a single line for the given variant. */
 function orderForVariant(ProductVariant $variant, int $qty): Order

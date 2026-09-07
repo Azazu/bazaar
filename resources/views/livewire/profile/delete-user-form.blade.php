@@ -1,6 +1,8 @@
 <?php
 
+use App\Exceptions\DeletionBlockedException;
 use App\Livewire\Actions\Logout;
+use App\Services\Account\AccountService;
 use Illuminate\Support\Facades\Auth;
 
 use function Livewire\Volt\rules;
@@ -10,10 +12,19 @@ state(['password' => '']);
 
 rules(['password' => ['required', 'string', 'current_password']]);
 
+// The account is anonymised and soft-deleted; order history stays intact (AccountService).
 $deleteUser = function (Logout $logout) {
     $this->validate();
 
-    tap(Auth::user(), $logout(...))->delete();
+    try {
+        app(AccountService::class)->close(Auth::user());
+    } catch (DeletionBlockedException $e) {
+        $this->addError('account', $e->getMessage());
+
+        return;
+    }
+
+    $logout();
 
     $this->redirect('/', navigate: true);
 };
@@ -27,7 +38,7 @@ $deleteUser = function (Logout $logout) {
         </h2>
 
         <p class="mt-1 text-sm text-gray-600">
-            {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Before deleting your account, please download any data or information that you wish to retain.') }}
+            {{ __('Deleting your account removes your personal data and signs you out for good. Completed orders are kept anonymised for accounting; an account with orders still in progress cannot be deleted yet.') }}
         </p>
     </header>
 
@@ -44,8 +55,10 @@ $deleteUser = function (Logout $logout) {
             </h2>
 
             <p class="mt-1 text-sm text-gray-600">
-                {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.') }}
+                {{ __('Your personal data will be removed and you will be signed out for good. Please enter your password to confirm.') }}
             </p>
+
+            <x-input-error :messages="$errors->get('account')" class="mt-4" />
 
             <div class="mt-6">
                 <x-input-label for="password" value="{{ __('Password') }}" class="sr-only" />

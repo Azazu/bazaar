@@ -69,7 +69,9 @@ test('user can delete their account', function () {
         ->assertRedirect('/');
 
     $this->assertGuest();
-    $this->assertNull($user->fresh());
+    $this->assertNull(User::find($user->id));              // gone from every ordinary query…
+    $this->assertTrue($user->fresh()->trashed());          // …but the row stays, anonymised, as the anchor for order history
+    $this->assertSame('Deleted user', $user->fresh()->name);
 });
 
 test('correct password must be provided to delete account', function () {

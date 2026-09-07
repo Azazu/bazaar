@@ -24,22 +24,6 @@ use Laravel\Sanctum\Sanctum;
 use Livewire\Volt\Volt;
 use Spatie\ModelStates\Exceptions\CouldNotPerformTransition;
 
-/** A paid order for 2 units of a 5-unit variant, with its sub-order and (via OrderPaid) payout. */
-function paidOrderWithStock(): array
-{
-    $variant = ProductVariant::factory()->create(['stock' => 5]);
-    $order = orderForVariant($variant, 2);
-    $subOrder = SubOrder::factory()->create([
-        'order_id' => $order->id,
-        'store_id' => $variant->product->store_id,
-        'subtotal_cents' => $order->subtotal_cents,
-    ]);
-
-    pay($order); // decrements stock to 3, marks the sub-order paid, creates a payout
-
-    return [$order->refresh(), $variant, $subOrder];
-}
-
 it('cancels a pending order without touching stock', function () {
     $variant = ProductVariant::factory()->create(['stock' => 5]);
     $order = orderForVariant($variant, 2);
