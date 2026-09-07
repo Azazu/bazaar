@@ -8,6 +8,9 @@ use App\Services\Cart\CartStorageFactory;
 use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\StripeGateway;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Foundation\Application;
@@ -64,6 +67,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(fn (User $user) => $user->hasRole('admin') ? true : null);
 
         $this->configureRateLimiting();
+
+        // API reference: every protected route is documented as bearer-token (Sanctum) secured.
+        Scramble::afterOpenApiGenerated(function (OpenApi $openApi): void {
+            $openApi->secure(SecurityScheme::http('bearer'));
+        });
     }
 
     /**
