@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\InsufficientStockException;
 use App\Models\Order;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
@@ -7,7 +8,7 @@ use Illuminate\Support\Str;
 
 use function Livewire\Volt\{mount, state};
 
-state(['order', 'clientSecret' => null, 'awaitingConfirmation' => false]);
+state(['order', 'clientSecret' => null, 'awaitingConfirmation' => false, 'paymentError' => null]);
 
 mount(function (Order $order) {
     $this->authorize('view', $order); // OrderPolicy: a buyer sees only their own orders
@@ -28,7 +29,17 @@ $cancel = function () {
 // Start a payment. Stripe: hand the client secret to the Payment Element and wait for the
 // webhook. Sandbox: nothing to confirm client-side, so simulate the provider's callback now.
 $pay = function () {
-    $started = app(PaymentService::class)->start($this->order);
+    $this->paymentError = null;
+
+    try {
+        $started = app(PaymentService::class)->start($this->order);
+    } catch (InsufficientStockException $e) {
+        $this->paymentError = __(':item is out of stock — please adjust your order.', [
+            'item' => trim(($e->variant->product?->title ?? '').' — '.$e->variant->name),
+        ]);
+
+        return;
+    }
 
     if ($started->requiresClientAction) {
         $this->clientSecret = $started->clientSecret;
@@ -96,6 +107,9 @@ $pay = function () {
             </div>
         @else
             <div class="mt-6">
+                @if ($paymentError)
+                    <p class="mb-3 text-sm text-red-600">{{ $paymentError }}</p>
+                @endif
                 <button wire:click="pay" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
                     {{ __('Pay') }} {{ money($order->total_cents) }}
                 </button>

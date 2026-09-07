@@ -2,6 +2,7 @@
 
 use App\Models\Order;
 use App\Models\ProductVariant;
+use App\States\Order\Cancelled;
 use App\States\Order\Paid;
 use App\States\Order\Pending;
 
@@ -107,4 +108,18 @@ it('acknowledges events for unknown intents and unrelated types without failing'
             'CONTENT_TYPE' => 'application/json',
         ], $payload)->assertNoContent();
     }
+});
+
+it('acknowledges a succeeded event for a sold-out order after refunding and cancelling it', function () {
+    [$order, $variant] = orderAwaitingStripe();
+    $variant->update(['stock' => 0]);
+    $payload = stripeEvent('payment_intent.succeeded', 'pi_test_123');
+
+    $this->call('POST', '/stripe/webhook', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => stripeSignature($payload),
+        'CONTENT_TYPE' => 'application/json',
+    ], $payload)->assertNoContent(); // a 5xx would make Stripe retry into the same shortage
+
+    expect($order->fresh()->status)->toBeInstanceOf(Cancelled::class)
+        ->and($order->payments()->value('status'))->toBe('refunded');
 });

@@ -1,12 +1,12 @@
 <?php
 
-use App\Exceptions\InsufficientStockException;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\ProductVariant;
 use App\Models\User;
 use App\Services\Payment\PaymentService;
+use App\States\Order\Cancelled;
 use App\States\Order\Paid;
-use App\States\Order\Pending;
 
 beforeEach(fn () => requiresDatabaseConcurrency());
 
@@ -44,20 +44,19 @@ it('never oversells when many buyers pay for the last unit at once', function ()
     $variant = ProductVariant::factory()->create(['stock' => 1]);
     $transactions = racingPayments($variant, $racers);
 
+    // A worker "wins" when its payment ends up succeeded; a loser's payment is refunded and its order
+    // cancelled by confirm() itself (someone else took the unit), never an exception.
     $result = raceInParallel($racers, function (int $i) use ($transactions) {
-        try {
-            app(PaymentService::class)->confirm('evt_race_'.$i, $transactions[$i - 1]);
+        app(PaymentService::class)->confirm('evt_race_'.$i, $transactions[$i - 1]);
 
-            return true;
-        } catch (InsufficientStockException) {
-            return false; // correctly refused — someone else took the last unit
-        }
+        return Payment::where('transaction_id', $transactions[$i - 1])->value('status') === 'succeeded';
     });
 
     expect($result)->toBe(['ok' => 1, 'rejected' => $racers - 1, 'failed' => 0])
-        ->and($variant->fresh()->stock)->toBe(0)                                   // never negative
-        ->and(Order::where('status', Paid::$name)->count())->toBe(1)               // exactly one sale
-        ->and(Order::where('status', Pending::$name)->count())->toBe($racers - 1); // the rest rolled back
+        ->and($variant->fresh()->stock)->toBe(0)                                     // never negative
+        ->and(Order::where('status', Paid::$name)->count())->toBe(1)                 // exactly one sale
+        ->and(Order::where('status', Cancelled::$name)->count())->toBe($racers - 1)  // the rest cancelled…
+        ->and(Payment::where('status', 'refunded')->count())->toBe($racers - 1);     // …and refunded
 });
 
 it('sells exactly the available units when buyers outnumber stock', function () {
@@ -67,16 +66,13 @@ it('sells exactly the available units when buyers outnumber stock', function () 
     $transactions = racingPayments($variant, $racers);
 
     $result = raceInParallel($racers, function (int $i) use ($transactions) {
-        try {
-            app(PaymentService::class)->confirm('evt_batch_'.$i, $transactions[$i - 1]);
+        app(PaymentService::class)->confirm('evt_batch_'.$i, $transactions[$i - 1]);
 
-            return true;
-        } catch (InsufficientStockException) {
-            return false;
-        }
+        return Payment::where('transaction_id', $transactions[$i - 1])->value('status') === 'succeeded';
     });
 
     expect($result)->toBe(['ok' => $stock, 'rejected' => $racers - $stock, 'failed' => 0])
         ->and($variant->fresh()->stock)->toBe(0)
-        ->and(Order::where('status', Paid::$name)->count())->toBe($stock);
+        ->and(Order::where('status', Paid::$name)->count())->toBe($stock)
+        ->and(Payment::where('status', 'refunded')->count())->toBe($racers - $stock);
 });

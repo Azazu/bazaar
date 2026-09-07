@@ -62,7 +62,8 @@ it('refunds through the payment intent', function () {
     (new StripeGateway(new StripeClient('sk_test_dummy')))->refund($payment);
 
     expect($http->requests[0]['url'])->toEndWith('/v1/refunds')
-        ->and($http->requests[0]['params'])->toBe(['payment_intent' => 'pi_abc']);
+        ->and($http->requests[0]['params'])->toBe(['payment_intent' => 'pi_abc'])
+        ->and(implode("\n", $http->requests[0]['headers']))->toContain('Idempotency-Key: refund-pi_abc');
 });
 
 it('binds the gateway the config asks for', function () {

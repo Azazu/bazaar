@@ -36,7 +36,7 @@ The domain is deliberately the hard part of e-commerce: money, stock under concu
 
 - **Money is integers.** Amounts are stored in minor units and only ever manipulated through `brick/money`; commission rounding reconciles to the cent. → [`app/Listeners/CreatePayouts.php`](app/Listeners/CreatePayouts.php), [`app/Support/helpers.php`](app/Support/helpers.php)
 - **No overselling.** Stock is decremented inside the payment transaction under `SELECT … FOR UPDATE`; a shortfall rolls the payment back and the order stays `pending`. Proven by forking 10 buyers racing for the last unit on a real MySQL. → [`app/Services/Stock/StockManager.php`](app/Services/Stock/StockManager.php), [`tests/Concurrency/StockConcurrencyTest.php`](tests/Concurrency/StockConcurrencyTest.php)
-- **Idempotent payment confirmation.** Only the signed Stripe webhook marks an order paid — never the redirect back. A unique event ledger, the payment's own status and the state machine each guard the transition, including eight simultaneous deliveries of the same event. → [`app/Http/Controllers/StripeWebhookController.php`](app/Http/Controllers/StripeWebhookController.php), [`app/Services/Payment/PaymentService.php`](app/Services/Payment/PaymentService.php), [`tests/Concurrency/PaymentWebhookConcurrencyTest.php`](tests/Concurrency/PaymentWebhookConcurrencyTest.php)
+- **Idempotent payment confirmation.** Only the signed Stripe webhook marks an order paid — never the redirect back. If an item sold out in between, the webhook refunds (idempotently), cancels the order and tells the buyer, instead of failing and being retried into the same shortage. A unique event ledger, the payment's own status and the state machine each guard the transition, including eight simultaneous deliveries of the same event. → [`app/Http/Controllers/StripeWebhookController.php`](app/Http/Controllers/StripeWebhookController.php), [`app/Services/Payment/PaymentService.php`](app/Services/Payment/PaymentService.php), [`tests/Concurrency/PaymentWebhookConcurrencyTest.php`](tests/Concurrency/PaymentWebhookConcurrencyTest.php)
 - **Swappable payment gateway.** `PaymentGateway` has a Stripe implementation (idempotency keys, minor units, refunds via the intent) and a keyless sandbox one; `PAYMENT_GATEWAY` picks it, nothing else changes. Gateway tests run against a recording HTTP stub, not the network. → [`app/Services/Payment`](app/Services/Payment)
 - **State machines, not status strings.** `spatie/laravel-model-states` for orders and sub-orders; illegal transitions throw (`409` on the API). Cancellation and refunds move the order, its sub-orders, stock and payouts together in one transaction. Domain invariants live in services — admins bypass policies, never invariants. → [`app/Services/Order/OrderService.php`](app/Services/Order/OrderService.php)
 - **One checkout, N sub-orders, atomically**, with price and title snapshots per line. → [`app/Services/Checkout/CheckoutService.php`](app/Services/Checkout/CheckoutService.php)
@@ -142,7 +142,8 @@ The default suite covers checkout, Stripe webhook signature verification, paymen
 - [x] REST API, search and facets, concurrency tests, Larastan, CI
 - [x] Stripe test-mode gateway (Payment Element, signed webhooks, refunds) behind the `PaymentGateway` contract
 - [x] Product images (Intervention Image, queued WebP derivatives)
-- [ ] Meilisearch driver, Stripe Connect payouts, automatic refund when stock runs out between checkout and payment
+- [x] Automatic refund when an item sells out between checkout and the payment webhook
+- [ ] Meilisearch driver, Stripe Connect payouts
 
 ## License
 

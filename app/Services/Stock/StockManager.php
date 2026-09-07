@@ -10,6 +10,22 @@ use Illuminate\Support\Facades\DB;
 class StockManager
 {
     /**
+     * Cheap, lock-free check used before taking money: is every line currently in stock?
+     * Not a guarantee (someone may buy in between — decrementForOrder() is the real gate),
+     * but it stops the obvious case without creating a payment that would only be refunded.
+     */
+    public function assertAvailable(Order $order): void
+    {
+        $order->loadMissing('items.variant');
+
+        foreach ($order->items as $item) {
+            if ($item->variant !== null && $item->variant->stock < $item->qty) {
+                throw new InsufficientStockException($item->variant, $item->qty);
+            }
+        }
+    }
+
+    /**
      * Decrement stock for every line of an order, safely under concurrency.
      *
      * Each variant row is read with lockForUpdate() inside a transaction, so two

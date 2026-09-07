@@ -7,6 +7,7 @@ use App\Models\SubOrder;
 use App\Models\User;
 use App\Services\Order\OrderService;
 use App\States\Order\Cancelled;
+use App\States\Order\Pending;
 use App\States\Order\Processing;
 use App\States\Order\Refunded;
 use App\States\Order\Shipped;
@@ -157,4 +158,21 @@ it('lets a buyer cancel from the order page', function () {
         ->assertDontSee('Cancel order');
 
     expect($order->fresh()->status)->toBeInstanceOf(Cancelled::class);
+});
+
+it('shows the shortage on the order page instead of failing', function () {
+    $buyer = User::factory()->create();
+    $variant = ProductVariant::factory()->create(['stock' => 0, 'name' => 'XL / red']);
+    $order = orderForVariant($variant, 1);
+    $order->update(['buyer_id' => $buyer->id]);
+
+    $this->actingAs($buyer);
+
+    Volt::test('pages.orders.show', ['order' => $order->fresh()])
+        ->call('pay')
+        ->assertHasNoErrors()
+        ->assertSee('XL / red')
+        ->assertSee('out of stock');
+
+    expect($order->fresh()->status)->toBeInstanceOf(Pending::class);
 });

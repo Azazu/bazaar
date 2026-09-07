@@ -3,19 +3,27 @@
 namespace App\Services\Payment;
 
 use App\Events\OrderPaid;
+use App\Events\OrderUnfulfillable;
+use App\Exceptions\InsufficientStockException;
 use App\Exceptions\OrderNotPayableException;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
+use App\Services\Stock\StockManager;
+use App\States\Order\Cancelled;
 use App\States\Order\Paid;
 use App\States\Order\Pending;
+use App\States\SubOrder\Cancelled as SubOrderCancelled;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class PaymentService
 {
-    public function __construct(private readonly PaymentGateway $gateway) {}
+    public function __construct(
+        private readonly PaymentGateway $gateway,
+        private readonly StockManager $stock,
+    ) {}
 
     /**
      * Start a payment for a pending order: create the provider intent and a local Payment row.
@@ -29,6 +37,10 @@ class PaymentService
         if (! $order->status instanceof Pending) {
             throw new OrderNotPayableException($order);
         }
+
+        // Don't take money for something already sold out; the locked decrement on payment
+        // still guards the race window, and confirm() refunds if it loses.
+        $this->stock->assertAvailable($order);
 
         $intent = $this->gateway->createIntent($order);
 
@@ -84,6 +96,54 @@ class PaymentService
      * later retry from the provider is applied normally.
      */
     public function confirm(string $eventId, string $transactionId): void
+    {
+        try {
+            $this->applySucceeded($eventId, $transactionId);
+        } catch (InsufficientStockException $soldOut) {
+            // The transaction above rolled back: the order is still pending, no stock moved, no
+            // payouts exist — but the customer *was* charged. Reverse it instead of failing the
+            // webhook, which would only make the provider retry into the same shortage for days.
+            $this->refundUnfulfillable($eventId, $transactionId, $soldOut);
+        }
+    }
+
+    /**
+     * Money came back for an order we can't ship. Refund first (idempotent at the provider,
+     * so a retry after a crash here is safe), then record: payment refunded, order and its
+     * sub-orders cancelled, event id in the ledger so redeliveries are no-ops.
+     */
+    private function refundUnfulfillable(string $eventId, string $transactionId, InsufficientStockException $soldOut): void
+    {
+        $payment = Payment::where('transaction_id', $transactionId)->firstOrFail();
+        $order = $payment->order ?? throw new LogicException("Payment #{$payment->id} has no order.");
+
+        $this->gateway->refund($payment);
+
+        DB::transaction(function () use ($eventId, $payment, $order, $soldOut) {
+            try {
+                PaymentEvent::firstOrCreate(['event_id' => $eventId]);
+            } catch (UniqueConstraintViolationException) {
+                // a concurrent delivery is recording the same outcome
+            }
+
+            $payment->update(['status' => 'refunded']);
+
+            if ($order->status instanceof Pending) {
+                $order->status->transitionTo(Cancelled::class);
+
+                foreach ($order->subOrders as $subOrder) {
+                    if ($subOrder->status->canTransitionTo(SubOrderCancelled::class)) {
+                        $subOrder->status->transitionTo(SubOrderCancelled::class);
+                    }
+                }
+
+                OrderUnfulfillable::dispatch($order->refresh(), $soldOut->variant);
+            }
+        });
+    }
+
+    /** The happy path of confirm(): everything inside one transaction, see the notes on confirm(). */
+    private function applySucceeded(string $eventId, string $transactionId): void
     {
         DB::transaction(function () use ($eventId, $transactionId) {
             try {
