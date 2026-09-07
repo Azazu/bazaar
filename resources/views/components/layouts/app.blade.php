@@ -14,13 +14,10 @@
     <header class="bg-white border-b">
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <a href="{{ route('catalog.index') }}" class="text-xl font-bold">Bazaar</a>
-            <nav class="text-sm space-x-4">
+            <nav class="flex items-center gap-4 text-sm">
                 <livewire:cart-badge />
                 @auth
-                    @role('vendor')
-                        <a href="{{ route('vendor.orders') }}" class="text-gray-600 hover:text-gray-900">{{ __('Vendor') }}</a>
-                    @endrole
-                    <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">{{ __('Dashboard') }}</a>
+                    <livewire:user-menu />
                 @else
                     <a href="{{ route('login') }}" class="text-gray-600 hover:text-gray-900">{{ __('Log in') }}</a>
                     <a href="{{ route('register') }}" class="text-gray-600 hover:text-gray-900">{{ __('Register') }}</a>

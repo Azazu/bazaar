@@ -48,12 +48,12 @@ test('navigation menu can be rendered', function () {
 
     $this->actingAs($user);
 
-    // The dashboard is the storefront's "My orders" page now; the profile still uses the Breeze layout.
+    // Every authenticated page shares the storefront layout, whose header renders the user menu.
     $response = $this->get('/profile');
 
     $response
         ->assertOk()
-        ->assertSeeVolt('layout.navigation');
+        ->assertSeeVolt('user-menu');
 });
 
 test('users can logout', function () {
@@ -61,7 +61,7 @@ test('users can logout', function () {
 
     $this->actingAs($user);
 
-    $component = Volt::test('layout.navigation');
+    $component = Volt::test('user-menu');
 
     $component->call('logout');
 
