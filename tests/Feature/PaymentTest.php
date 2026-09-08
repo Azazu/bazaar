@@ -87,9 +87,11 @@ it('refunds and cancels when an item sold out between checkout and the payment w
     {
         public function __construct(private ArrayObject $log) {}
 
-        public function refund(Payment $payment): void
+        public function refund(Payment $payment): ?string
         {
             $this->log->append($payment->transaction_id);
+
+            return null;
         }
     });
 
@@ -143,9 +145,11 @@ function loggingGateway(ArrayObject $log, bool $resumable = true): FakePaymentGa
             return $this->resumable ? parent::resumeIntent($payment) : null;
         }
 
-        public function refund(Payment $payment): void
+        public function refund(Payment $payment): ?string
         {
             $this->log->append($payment->transaction_id);
+
+            return null;
         }
     };
 }

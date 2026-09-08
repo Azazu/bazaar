@@ -23,6 +23,9 @@ interface PaymentGateway
      */
     public function resumeIntent(Payment $payment): ?PaymentIntentData;
 
-    /** Return the money for a succeeded payment at the provider. */
-    public function refund(Payment $payment): void;
+    /**
+     * Return the money for a succeeded payment at the provider. Returns the provider's
+     * reference for the refund (Stripe: the refund id) when it has one, for the audit trail.
+     */
+    public function refund(Payment $payment): ?string;
 }

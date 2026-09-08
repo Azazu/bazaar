@@ -200,13 +200,15 @@ it('reverses the order first and returns the money in a retried job, so a provid
     {
         public function __construct(private ArrayObject $attempts) {}
 
-        public function refund(Payment $payment): void
+        public function refund(Payment $payment): ?string
         {
             $this->attempts->append($payment->transaction_id);
 
             if (count($this->attempts) === 1) {
                 throw new RuntimeException('provider timeout');
             }
+
+            return 'ref_'.count($this->attempts);
         }
     });
     Queue::fake([RefundPayment::class]);

@@ -5,28 +5,8 @@ use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\StripeGateway;
 use Stripe\ApiRequestor;
-use Stripe\HttpClient\ClientInterface;
 use Stripe\StripeClient;
-
-/**
- * Stand-in for Stripe's HTTP layer: records every request and answers with canned JSON,
- * so the gateway is exercised end to end without touching the network.
- */
-final class RecordingStripeHttpClient implements ClientInterface
-{
-    /** @var array<int, array{method: string, url: string, params: array<string, mixed>, headers: array<int, string>}> */
-    public array $requests = [];
-
-    /** @param  array<string, mixed>  $response */
-    public function __construct(private array $response) {}
-
-    public function request($method, $absUrl, $headers, $params, $hasFile, $apiMode = 'v1', $maxNetworkRetries = null): array
-    {
-        $this->requests[] = ['method' => $method, 'url' => $absUrl, 'params' => $params, 'headers' => $headers];
-
-        return [json_encode($this->response, JSON_THROW_ON_ERROR), 200, []];
-    }
-}
+use Tests\Support\RecordingStripeHttpClient;
 
 afterEach(fn () => ApiRequestor::setHttpClient(null));
 
@@ -59,9 +39,10 @@ it('refunds through the payment intent', function () {
         'amount_cents' => $order->total_cents, 'currency' => 'USD',
     ]);
 
-    (new StripeGateway(new StripeClient('sk_test_dummy')))->refund($payment);
+    $reference = (new StripeGateway(new StripeClient('sk_test_dummy')))->refund($payment);
 
-    expect($http->requests[0]['url'])->toEndWith('/v1/refunds')
+    expect($reference)->toBe('re_1')
+        ->and($http->requests[0]['url'])->toEndWith('/v1/refunds')
         ->and($http->requests[0]['params'])->toBe(['payment_intent' => 'pi_abc'])
         ->and(implode("\n", $http->requests[0]['headers']))->toContain('Idempotency-Key: refund-pi_abc');
 });

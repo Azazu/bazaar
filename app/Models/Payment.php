@@ -14,7 +14,14 @@ class Payment extends Model
         'status',
         'amount_cents',
         'currency',
+        'refund_reference',
+        'refunded_at',
     ];
+
+    protected function casts(): array
+    {
+        return ['refunded_at' => 'datetime'];
+    }
 
     /** @return BelongsTo<Order, $this> */
     public function order(): BelongsTo

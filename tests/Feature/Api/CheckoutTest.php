@@ -165,7 +165,10 @@ it('returns the client secret and keeps the order pending when the gateway needs
             return null;
         }
 
-        public function refund(Payment $payment): void {}
+        public function refund(Payment $payment): ?string
+        {
+            return null;
+        }
     });
     Sanctum::actingAs($buyer = User::factory()->create());
     $order = Order::factory()->create(['buyer_id' => $buyer->id]);

@@ -5,9 +5,8 @@ namespace App\Providers;
 use App\Models\User;
 use App\Services\Cart\CartStorage;
 use App\Services\Cart\CartStorageFactory;
-use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
-use App\Services\Payment\StripeGateway;
+use App\Services\Payment\PaymentGatewayRegistry;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
@@ -30,13 +29,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Payment provider, chosen by config: the sandbox needs no keys, Stripe needs a secret.
-        // PaymentService and the checkout flow don't know which one they got.
-        $this->app->bind(PaymentGateway::class, fn (Application $app): PaymentGateway => match (config('bazaar.payment_gateway')) {
-            'stripe' => $app->make(StripeGateway::class),
-            'fake' => new FakePaymentGateway,
-            default => throw new RuntimeException('Unknown PAYMENT_GATEWAY: '.config('bazaar.payment_gateway')),
-        });
+        // Payment provider for *new* payments, chosen by config: the sandbox needs no keys, Stripe
+        // needs a secret. Existing payments are always handled by the gateway they were made with
+        // (PaymentGatewayRegistry::for), whatever this is set to now.
+        $this->app->bind(PaymentGateway::class, fn (Application $app): PaymentGateway => $app
+            ->make(PaymentGatewayRegistry::class)
+            ->named((string) config('bazaar.payment_gateway')));
 
         // GD is what the php image ships with (with WebP); swap for Imagick here if it ever matters.
         $this->app->singleton(ImageManager::class, fn (): ImageManager => new ImageManager(GdDriver::class));

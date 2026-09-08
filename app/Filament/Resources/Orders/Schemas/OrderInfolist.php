@@ -116,6 +116,7 @@ class OrderInfolist
                                 TableColumn::make('Transaction'),
                                 TableColumn::make('Status'),
                                 TableColumn::make('Amount'),
+                                TableColumn::make('Refund'),
                             ])
                             ->schema([
                                 TextEntry::make('gateway'),
@@ -123,6 +124,7 @@ class OrderInfolist
                                 TextEntry::make('status')->badge()->color('gray')->formatStateUsing(fn (string $state): string => Str::headline($state)),
                                 TextEntry::make('amount_cents')
                                     ->formatStateUsing(fn (int $state, Payment $record): string => money($state, $record->currency)),
+                                TextEntry::make('refund_reference')->copyable()->placeholder('—'),
                             ]),
                     ]),
             ]);

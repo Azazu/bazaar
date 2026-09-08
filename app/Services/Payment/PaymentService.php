@@ -25,7 +25,7 @@ use LogicException;
 class PaymentService
 {
     public function __construct(
-        private readonly PaymentGateway $gateway,
+        private readonly PaymentGatewayRegistry $gateways,
         private readonly StockManager $stock,
     ) {}
 
@@ -59,14 +59,16 @@ class PaymentService
             // still guards the race window, and confirm() refunds if it loses.
             $this->stock->assertAvailable($order);
 
+            $gateway = $this->gateways->default();
+
             $open = $order->payments()
                 ->where('status', 'pending')
-                ->where('gateway', $this->gateway->name())
+                ->where('gateway', $gateway->name())
                 ->latest('id')
                 ->first();
 
             if ($open !== null) {
-                $intent = $this->gateway->resumeIntent($open);
+                $intent = $gateway->resumeIntent($open);
 
                 if ($intent !== null) {
                     return new StartedPayment($open, $intent->clientSecret, $intent->requiresClientAction);
@@ -75,10 +77,10 @@ class PaymentService
                 $open->update(['status' => 'failed']); // the provider can no longer complete it
             }
 
-            $intent = $this->gateway->createIntent($order);
+            $intent = $gateway->createIntent($order);
 
             $payment = $order->payments()->create([
-                'gateway' => $this->gateway->name(),
+                'gateway' => $gateway->name(),
                 'transaction_id' => $intent->id,
                 'status' => 'pending',
                 'amount_cents' => $order->total_cents,
@@ -119,6 +121,10 @@ class PaymentService
      * Second half of a refund, run by RefundPayment: return the money at the provider and
      * record it. Idempotent — a payment that is not (or no longer) refund_pending is skipped,
      * and the gateway keys the refund by transaction so even a repeat call can't pay twice.
+     *
+     * The provider is the one that took the payment (payments.gateway), not whatever
+     * PAYMENT_GATEWAY says today. If that provider is unknown or unconfigured, the registry
+     * throws and the payment stays refund_pending — never marked refunded without a real refund.
      */
     public function executeRefund(Payment $payment): void
     {
@@ -128,9 +134,13 @@ class PaymentService
             return;
         }
 
-        $this->gateway->refund($payment);
+        $reference = $this->gateways->for($payment)->refund($payment);
 
-        $payment->update(['status' => 'refunded']);
+        $payment->update([
+            'status' => 'refunded',
+            'refund_reference' => $reference,
+            'refunded_at' => now(),
+        ]);
     }
 
     /** Mark the money as owed back and queue the provider call for after the surrounding commit. */

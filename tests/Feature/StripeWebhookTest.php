@@ -5,6 +5,9 @@ use App\Models\ProductVariant;
 use App\States\Order\Cancelled;
 use App\States\Order\Paid;
 use App\States\Order\Pending;
+use Stripe\ApiRequestor;
+use Stripe\StripeClient;
+use Tests\Support\RecordingStripeHttpClient;
 
 const WEBHOOK_SECRET = 'whsec_test_secret';
 
@@ -110,7 +113,13 @@ it('acknowledges events for unknown intents and unrelated types without failing'
     }
 });
 
-it('acknowledges a succeeded event for a sold-out order after refunding and cancelling it', function () {
+it('acknowledges a succeeded event for a sold-out order after refunding it through Stripe and cancelling it', function () {
+    // The payment is a Stripe one, so the refund must go to Stripe — regardless of the sandbox
+    // being the default gateway in this test environment.
+    config(['services.stripe.secret' => 'sk_test_dummy']);
+    $http = new RecordingStripeHttpClient(['id' => 're_soldout', 'object' => 'refund']);
+    ApiRequestor::setHttpClient($http);
+
     [$order, $variant] = orderAwaitingStripe();
     $variant->update(['stock' => 0]);
     $payload = stripeEvent('payment_intent.succeeded', 'pi_test_123');
@@ -121,5 +130,11 @@ it('acknowledges a succeeded event for a sold-out order after refunding and canc
     ], $payload)->assertNoContent(); // a 5xx would make Stripe retry into the same shortage
 
     expect($order->fresh()->status)->toBeInstanceOf(Cancelled::class)
-        ->and($order->payments()->value('status'))->toBe('refunded');
+        ->and($order->payments()->value('status'))->toBe('refunded')
+        ->and($order->payments()->value('refund_reference'))->toBe('re_soldout')
+        ->and($http->requests[0]['url'])->toEndWith('/v1/refunds')
+        ->and($http->requests[0]['params'])->toBe(['payment_intent' => 'pi_test_123']);
+
+    ApiRequestor::setHttpClient(null);
+    app()->forgetInstance(StripeClient::class);
 });

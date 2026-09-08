@@ -28,8 +28,8 @@ class FakePaymentGateway implements PaymentGateway
         return new PaymentIntentData($payment->transaction_id);
     }
 
-    public function refund(Payment $payment): void
+    public function refund(Payment $payment): ?string
     {
-        // Nothing to call in the sandbox.
+        return 'fake_refund_'.$payment->transaction_id; // nothing to call in the sandbox; a reference for the trail
     }
 }

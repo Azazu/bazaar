@@ -49,12 +49,14 @@ class StripeGateway implements PaymentGateway
         return new PaymentIntentData($intent->id, $intent->client_secret, requiresClientAction: true);
     }
 
-    public function refund(Payment $payment): void
+    public function refund(Payment $payment): ?string
     {
         // One refund per payment, however many times we get here (webhook retries, crashes after the call).
-        $this->stripe->refunds->create(
+        $refund = $this->stripe->refunds->create(
             ['payment_intent' => $payment->transaction_id],
             ['idempotency_key' => 'refund-'.$payment->transaction_id],
         );
+
+        return $refund->id;
     }
 }
