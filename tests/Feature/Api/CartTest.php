@@ -72,3 +72,15 @@ it('keeps each user\'s cart separate', function () {
     Sanctum::actingAs(User::factory()->create());
     $this->getJson('/api/v1/cart')->assertJsonPath('data.count', 0);
 });
+
+it('does not let PATCH add a line the cart never had', function () {
+    Sanctum::actingAs(User::factory()->create());
+    $draft = ProductVariant::factory()->create();
+    $draft->product->update(['status' => 'draft']); // POST would refuse this one
+
+    $this->patchJson("/api/v1/cart/items/{$draft->id}", ['qty' => 3])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('variant');
+
+    $this->getJson('/api/v1/cart')->assertJsonCount(0, 'data.items');
+});

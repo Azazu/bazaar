@@ -2,15 +2,17 @@
 
 namespace App\Services\Checkout;
 
+use App\Enums\ProductStatus;
 use App\Enums\StoreStatus;
 use App\Exceptions\CheckoutBlockedException;
 use App\Models\Coupon;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Cart\CartService;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -29,32 +31,33 @@ class CheckoutService
      * The cart is left alone: it empties when the order is actually paid (see
      * ReleasePurchasedCartLines), so an abandoned checkout doesn't lose the basket.
      *
-     * The buyer and every store in the cart are locked (buyer first, then stores by id — the
-     * same order AccountService uses to close accounts and archive stores) and re-checked on
-     * that snapshot, so an order can never be created for a closed account or a sub-order for
-     * a store that was archived or suspended a moment ago.
+     * Everything the order is made of is read *inside* the transaction, once, from locked rows:
+     * the buyer, then the stores, the products and the variants (each set in id order — the
+     * same order AccountService and StockManager take their locks). The snapshot lines and the subtotal
+     * come from that one collection, so they can't disagree even if a price changes while the
+     * buyer is on the checkout page, and every line is re-checked for sellability here,
+     * whatever the cart endpoints did or didn't check when it was added.
      *
      * @param  array<string, string>  $shippingAddress
      */
     public function place(User $buyer, array $shippingAddress, string $shippingMethod, ?Coupon $coupon = null): Order
     {
-        $lines = $this->cart->items();
+        $cart = $this->cart->lines();
 
-        if ($lines->isEmpty()) {
+        if ($cart === []) {
             throw new \RuntimeException('Cannot checkout an empty cart.');
         }
 
-        $subtotal = $this->cart->total();
-        $shipping = self::SHIPPING_RATES[$shippingMethod] ?? 0;
+        return DB::transaction(function () use ($buyer, $cart, $shippingAddress, $shippingMethod, $coupon) {
+            $this->lockBuyer($buyer);
+            $variants = $this->lockSellableVariants($cart);
 
-        // Re-validate the coupon at order time — never trust a discount computed on the client.
-        $discount = ($coupon && $coupon->isValidFor($subtotal)) ? $coupon->discountFor($subtotal) : 0;
-        $couponId = $discount > 0 ? $coupon->id : null;
+            $subtotal = $variants->sum(fn (ProductVariant $variant) => $variant->price_cents * $cart[$variant->id]);
+            $shipping = self::SHIPPING_RATES[$shippingMethod] ?? 0;
 
-        $total = $subtotal + $shipping - $discount;
-
-        return DB::transaction(function () use ($buyer, $lines, $shippingAddress, $shippingMethod, $subtotal, $shipping, $discount, $total, $coupon, $couponId) {
-            $this->lockAndVerifyParties($buyer, $lines);
+            // Re-validate the coupon at order time — never trust a discount computed on the client.
+            $discount = ($coupon && $coupon->isValidFor($subtotal)) ? $coupon->discountFor($subtotal) : 0;
+            $couponId = $discount > 0 ? $coupon->id : null;
 
             $order = Order::create([
                 'buyer_id' => $buyer->id,
@@ -63,17 +66,17 @@ class CheckoutService
                 'shipping_cents' => $shipping,
                 'discount_cents' => $discount,
                 'coupon_id' => $couponId,
-                'total_cents' => $total,
+                'total_cents' => $subtotal + $shipping - $discount,
                 'shipping_address' => $shippingAddress,
                 'shipping_method' => $shippingMethod,
             ]);
 
-            // Create snapshot line items, grouped by the store they belong to.
+            // Create snapshot line items from the very rows the subtotal was computed from,
+            // grouped by the store they belong to.
             $itemsByStore = [];
 
-            foreach ($lines as $line) {
-                $variant = $line['variant'];
-                $product = $variant->product ?? throw new LogicException("Variant #{$variant->id} has no product.");
+            foreach ($variants as $variant) {
+                $product = $variant->product ?? throw new LogicException("Variant #{$variant->id} has no product."); // verified above
 
                 $item = $order->items()->create([
                     'product_variant_id' => $variant->id,
@@ -81,7 +84,7 @@ class CheckoutService
                     'product_title' => $product->title,            // snapshot
                     'variant_name' => $variant->name,              // snapshot
                     'unit_price_cents' => $variant->price_cents,   // snapshot price
-                    'qty' => $line['qty'],
+                    'qty' => $cart[$variant->id],
                 ]);
 
                 $itemsByStore[$product->store_id][] = $item;
@@ -108,38 +111,63 @@ class CheckoutService
         });
     }
 
-    /**
-     * Take row locks on the buyer and on each store in the cart, in a stable order, and make
-     * sure they can still trade: the buyer is not soft-deleted, every store exists (not
-     * archived) and is active. Holding the locks until commit means a concurrent close/archive
-     * waits for this order to land and is then refused by its own open-order check.
-     *
-     * @param  Collection<int, array{variant: ProductVariant, qty: int, line_total_cents: int}>  $lines
-     */
-    private function lockAndVerifyParties(User $buyer, Collection $lines): void
+    /** The buyer must still exist (not soft-deleted); the lock makes a concurrent account closure wait. */
+    private function lockBuyer(User $buyer): void
     {
         if (User::query()->whereKey($buyer->getKey())->lockForUpdate()->doesntExist()) {
             throw new CheckoutBlockedException('This account has been closed and can no longer place orders.');
         }
+    }
 
-        $storeIds = $lines
-            ->map(fn (array $line) => $line['variant']->product->store_id ?? throw new LogicException("Variant #{$line['variant']->id} has no product."))
-            ->unique()
-            ->sort()
-            ->values();
+    /**
+     * Load every variant in the cart, its product and its store from locked rows, in a stable
+     * order — stores, then products, then variants, each set by id — and make sure each line
+     * can still be sold: the variant exists, its product is published, its store exists (not
+     * archived) and is active. Product and store are taken from the locked rows only, never
+     * from a separate relation read, so an unpublish or an archive that commits first is seen
+     * and refused, and one that arrives later waits for this order to land.
+     *
+     * @param  array<int, int>  $cart  [variant_id => qty]
+     * @return Collection<int, ProductVariant>
+     */
+    private function lockSellableVariants(array $cart): Collection
+    {
+        $variantIds = collect(array_keys($cart))->sort()->values();
+
+        // Which rows to lock. These reads are unlocked, which is fine: product_id and store_id
+        // never change, and anything missing at lock time is caught below.
+        $productIds = ProductVariant::query()->whereKey($variantIds)->pluck('product_id')->unique()->sort()->values();
+        $storeIds = Product::query()->whereKey($productIds)->pluck('store_id')->unique()->sort()->values();
 
         $stores = Store::query()->whereKey($storeIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $products = Product::query()->whereKey($productIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $variants = ProductVariant::query()->whereKey($variantIds)->orderBy('id')->lockForUpdate()->get();
 
-        foreach ($storeIds as $storeId) {
-            $store = $stores->get($storeId);
+        if ($variants->count() !== $variantIds->count()) {
+            throw new CheckoutBlockedException('An item in your cart is no longer available; please remove it and try again.');
+        }
+
+        foreach ($variants as $variant) {
+            $product = $products->get($variant->product_id)
+                ?? throw new CheckoutBlockedException("{$variant->name} is no longer available; please remove it from your cart.");
+
+            if ($product->status !== ProductStatus::Published) {
+                throw new CheckoutBlockedException("{$product->title} is no longer for sale; please remove it from your cart.");
+            }
+
+            $store = $stores->get($product->store_id);
 
             if ($store === null) {
-                throw new CheckoutBlockedException('One of the stores in your cart is no longer on the marketplace.');
+                throw new CheckoutBlockedException("{$product->title} is no longer on the marketplace; please remove it from your cart.");
             }
 
             if ($store->status !== StoreStatus::Active) {
                 throw new CheckoutBlockedException("{$store->name} is not selling at the moment; please remove its items from your cart.");
             }
+
+            $variant->setRelation('product', $product); // the snapshot below reads the locked row, not a fresh one
         }
+
+        return $variants;
     }
 }

@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\ProductStatus;
 use App\Enums\StoreStatus;
 use App\Exceptions\CheckoutBlockedException;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SubOrder;
 use App\Models\User;
@@ -146,4 +148,106 @@ it('refuses to place an order for an account that has been closed', function () 
     expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))
         ->toThrow(CheckoutBlockedException::class, 'closed');
     expect(Order::count())->toBe(0);
+});
+
+/*
+ * HI-003: the order is built from one locked read inside the transaction, and every line is
+ * re-checked for sellability there, whatever the cart endpoints let through.
+ */
+
+it('keeps subtotal equal to the sum of the snapshot lines when a price changes mid-checkout', function () {
+    $user = User::factory()->create();
+    $a = ProductVariant::factory()->create(['price_cents' => 1000]);
+    $b = ProductVariant::factory()->create(['price_cents' => 2000]);
+    $this->actingAs($user);
+    app(CartService::class)->add($a->id, 2);
+    app(CartService::class)->add($b->id, 1);
+
+    // A vendor raises the price the instant the first variant row is read. With separate reads
+    // for "lines" and "total" the snapshot and the subtotal would disagree; one read can't.
+    $raised = false;
+    ProductVariant::retrieved(function () use ($b, &$raised) {
+        if (! $raised) {
+            $raised = true;
+            ProductVariant::whereKey($b->id)->update(['price_cents' => 9999]);
+        }
+    });
+
+    $order = app(CheckoutService::class)->place($user, ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'], 'standard');
+
+    $lines = $order->items->sum(fn ($item) => $item->unit_price_cents * $item->qty);
+    expect($order->subtotal_cents)->toBe($lines)
+        ->and($order->total_cents)->toBe($lines + CheckoutService::SHIPPING_RATES['standard'])
+        ->and($order->subOrders->sum('subtotal_cents'))->toBe($lines);
+});
+
+it('refuses to check out a draft product, a variant of a non-active store, or a variant that no longer exists', function () {
+    $user = User::factory()->create();
+    $address = ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'];
+    $this->actingAs($user);
+
+    // Draft product: the cart endpoint would have refused it, but a stale cart (or a product
+    // unpublished after adding) must be caught at checkout regardless.
+    $draft = ProductVariant::factory()->create();
+    app(CartService::class)->add($draft->id, 1);
+    $draft->product->update(['status' => ProductStatus::Draft]);
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))->toThrow(CheckoutBlockedException::class, 'no longer for sale');
+    app(CartService::class)->remove($draft->id);
+
+    // Store pending moderation.
+    $pending = ProductVariant::factory()->create();
+    app(CartService::class)->add($pending->id, 1);
+    $pending->product->store->update(['status' => StoreStatus::Pending]);
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))->toThrow(CheckoutBlockedException::class, 'not selling');
+    app(CartService::class)->remove($pending->id);
+
+    // Variant deleted while it sat in the cart: it must not silently vanish from the order.
+    $gone = ProductVariant::factory()->create();
+    $kept = ProductVariant::factory()->create();
+    app(CartService::class)->add($gone->id, 1);
+    app(CartService::class)->add($kept->id, 1);
+    ProductVariant::whereKey($gone->id)->delete();
+    expect(fn () => app(CheckoutService::class)->place($user, $address, 'standard'))->toThrow(CheckoutBlockedException::class, 'no longer available');
+
+    expect(Order::count())->toBe(0)->and(SubOrder::count())->toBe(0);
+});
+
+it('gives the web page and the API the same answer for an unsellable cart', function () {
+    $user = User::factory()->create();
+    $variant = ProductVariant::factory()->create();
+    $this->actingAs($user);
+    app(CartService::class)->add($variant->id, 1);
+    $variant->product->update(['status' => ProductStatus::Draft]);
+
+    Volt::test('pages.checkout.index')
+        ->set(['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US', 'shipping_method' => 'standard'])
+        ->call('place')
+        ->assertHasErrors('checkout')
+        ->assertSee('no longer for sale');
+
+    Sanctum::actingAs($user);
+    $this->postJson('/api/v1/checkout', [
+        'shipping_address' => ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'],
+        'shipping_method' => 'standard',
+    ])->assertConflict()->assertJsonPath('message', fn (string $m) => str_contains($m, 'no longer for sale'));
+
+    expect(Order::count())->toBe(0);
+});
+
+it('snapshots the line from the locked product row, not a separate read', function () {
+    // The product is unpublished the instant the variant row is read (after the locked product
+    // read). Checkout must not see the stale relation as "published" — it reads the locked row.
+    $user = User::factory()->create();
+    $variant = ProductVariant::factory()->create();
+    $this->actingAs($user);
+    app(CartService::class)->add($variant->id, 1);
+
+    ProductVariant::retrieved(fn (ProductVariant $v) => Product::whereKey($v->product_id)->update(['status' => ProductStatus::Draft]));
+
+    // In SQLite there are no row locks, so the write lands: the outcome that matters is
+    // that the decision is made from the row read inside the transaction — here still published,
+    // because products were read before variants — and the order carries that snapshot.
+    $order = app(CheckoutService::class)->place($user, ['name' => 'A', 'line1' => '1', 'city' => 'C', 'postcode' => '0', 'country' => 'US'], 'standard');
+
+    expect($order->items->first()->product_title)->toBe($variant->product->title);
 });

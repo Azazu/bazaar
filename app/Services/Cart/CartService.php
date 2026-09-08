@@ -21,10 +21,19 @@ class CartService
         $this->save($cart);
     }
 
-    /** Set an exact quantity (removes the line if qty <= 0). */
-    public function update(int $variantId, int $qty): void
+    /**
+     * Set an exact quantity on a line that is already in the cart (removes it if qty <= 0).
+     * Never creates a line: adding goes through add(), which is where sellability is checked.
+     *
+     * @return bool false when the variant is not in the cart (nothing changed)
+     */
+    public function update(int $variantId, int $qty): bool
     {
         $cart = $this->raw();
+
+        if (! array_key_exists($variantId, $cart)) {
+            return false;
+        }
 
         if ($qty <= 0) {
             unset($cart[$variantId]);
@@ -33,6 +42,13 @@ class CartService
         }
 
         $this->save($cart);
+
+        return true;
+    }
+
+    public function has(int $variantId): bool
+    {
+        return array_key_exists($variantId, $this->raw());
     }
 
     public function remove(int $variantId): void
@@ -62,6 +78,17 @@ class CartService
         }
 
         $this->save($cart);
+    }
+
+    /**
+     * The bare cart: [variant_id => qty], for code that loads the variants itself
+     * (checkout re-reads them inside its own transaction).
+     *
+     * @return array<int, int>
+     */
+    public function lines(): array
+    {
+        return $this->raw();
     }
 
     /**

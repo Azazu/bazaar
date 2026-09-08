@@ -36,3 +36,14 @@ it('removes a line from the cart', function () {
     expect($this->cart->items())->toBeEmpty()
         ->and($this->cart->count())->toBe(0);
 });
+
+it('only updates lines that are already in the cart', function () {
+    $variant = ProductVariant::factory()->create();
+
+    expect(app(CartService::class)->update($variant->id, 3))->toBeFalse()
+        ->and(app(CartService::class)->count())->toBe(0);
+
+    app(CartService::class)->add($variant->id, 1);
+    expect(app(CartService::class)->update($variant->id, 3))->toBeTrue()
+        ->and(app(CartService::class)->count())->toBe(3);
+});
