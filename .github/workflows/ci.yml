@@ -124,7 +124,7 @@ jobs:
           DB_PASSWORD: root
 
   assets:
-    name: Front-end build
+    name: Front-end build · audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -135,5 +135,8 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Build-time chain only, but a red audit is a red audit: high/critical fail the build.
+      - run: npm audit --audit-level=high
 
       - run: npm run build
