@@ -22,6 +22,13 @@ return [
     'pending_order_ttl_hours' => (int) env('BAZAAR_PENDING_ORDER_TTL_HOURS', 24),
 
     /*
+    | How long rows of the payment-event ledger (idempotency + audit trail of provider events)
+    | are kept before `model:prune` removes them. The payment itself — status, refund reference,
+    | timestamps — is the durable financial record and is never pruned.
+    */
+    'payment_event_retention_days' => (int) env('BAZAAR_PAYMENT_EVENT_RETENTION_DAYS', 400),
+
+    /*
     | Which PaymentGateway implementation to bind: "fake" (sandbox, no keys, settles instantly)
     | or "stripe" (test mode via Stripe.js + webhook; needs the services.stripe.* keys).
     */

@@ -91,12 +91,34 @@ class PaymentService
         });
     }
 
-    /** The provider reported a failed attempt: record it; the order stays pending and can be retried. */
-    public function fail(string $transactionId): void
+    /**
+     * The provider reported a failed attempt: record it; the order stays pending and can be
+     * retried. With an event id (webhooks have one) the attempt also goes into the ledger.
+     *
+     * Only a *pending* attempt can become failed. The payment is read under its row lock inside
+     * the transaction and the update is conditional on that status, so a "failed" event that
+     * races (or arrives after) the "succeeded" one for the same intent can never demote a
+     * charge that went through — confirm() holds the same lock while it marks it succeeded.
+     */
+    public function fail(string $transactionId, ?string $eventId = null): void
     {
-        Payment::where('transaction_id', $transactionId)
-            ->where('status', 'pending')
-            ->update(['status' => 'failed']);
+        DB::transaction(function () use ($transactionId, $eventId) {
+            $payment = Payment::query()->where('transaction_id', $transactionId)->lockForUpdate()->first();
+
+            if ($payment === null) {
+                return;
+            }
+
+            $changed = Payment::query()->whereKey($payment->id)->where('status', 'pending')->update(['status' => 'failed']);
+
+            if ($eventId !== null) {
+                // The type says what the provider sent; the outcome says what we did: a failure that
+                // arrives after the charge already succeeded (or was returned) changes nothing.
+                $this->ledger($eventId, $payment, 'payment.failed', $changed === 1
+                    ? PaymentEvent::OUTCOME_ATTEMPT_FAILED
+                    : PaymentEvent::OUTCOME_IGNORED);
+            }
+        });
     }
 
     /**
@@ -193,7 +215,7 @@ class PaymentService
         $payment = Payment::where('transaction_id', $transactionId)->firstOrFail();
         $order = $payment->order ?? throw new LogicException("Payment #{$payment->id} has no order.");
 
-        $this->recordRefund($eventId, $payment, function () use ($order, $reason) {
+        $this->recordRefund($eventId, $payment, PaymentEvent::OUTCOME_REFUNDED_UNFULFILLABLE, function () use ($order, $reason) {
             if ($order->status instanceof Pending) {
                 $order->status->transitionTo(Cancelled::class);
 
@@ -220,7 +242,7 @@ class PaymentService
             'transaction' => $payment->transaction_id,
         ]);
 
-        $this->recordRefund($eventId, $payment);
+        $this->recordRefund($eventId, $payment, PaymentEvent::OUTCOME_REFUNDED_SURPLUS);
     }
 
     /**
@@ -228,11 +250,11 @@ class PaymentService
      * caller needs to record; the provider call follows after commit (RefundPayment). The
      * ledger row makes a redelivery of the same event a no-op even while the job is pending.
      */
-    private function recordRefund(string $eventId, Payment $payment, ?Closure $andRecord = null): void
+    private function recordRefund(string $eventId, Payment $payment, string $outcome, ?Closure $andRecord = null): void
     {
-        DB::transaction(function () use ($eventId, $payment, $andRecord) {
+        DB::transaction(function () use ($eventId, $payment, $outcome, $andRecord) {
             try {
-                PaymentEvent::firstOrCreate(['event_id' => $eventId]);
+                $this->ledger($eventId, $payment, 'payment.succeeded', $outcome);
             } catch (UniqueConstraintViolationException) {
                 // a concurrent delivery is recording the same outcome
             }
@@ -245,12 +267,33 @@ class PaymentService
         });
     }
 
+    /**
+     * Write the ledger row for an event (or fetch the existing one): the idempotency key plus
+     * everything the audit needs — which payment, which provider and transaction, what kind of
+     * event and what we did with it. Inside the caller's transaction, so a rollback (sold out,
+     * surplus) releases the event id for the path that records the real outcome.
+     */
+    private function ledger(string $eventId, Payment $payment, string $type, string $outcome): PaymentEvent
+    {
+        return PaymentEvent::firstOrCreate(['event_id' => $eventId], [
+            'payment_id' => $payment->id,
+            'gateway' => $payment->gateway,
+            'transaction_id' => $payment->transaction_id,
+            'type' => $type,
+            'outcome' => $outcome,
+            'processed_at' => now(),
+        ]);
+    }
+
     /** The happy path of confirm(): everything inside one transaction, see the notes on confirm(). */
     private function applySucceeded(string $eventId, string $transactionId): void
     {
         DB::transaction(function () use ($eventId, $transactionId) {
+            // Locked: a concurrent fail() for the same intent waits, then sees "succeeded" and does nothing.
+            $payment = Payment::query()->where('transaction_id', $transactionId)->lockForUpdate()->firstOrFail();
+
             try {
-                $event = PaymentEvent::firstOrCreate(['event_id' => $eventId]);
+                $event = $this->ledger($eventId, $payment, 'payment.succeeded', PaymentEvent::OUTCOME_APPLIED);
             } catch (UniqueConstraintViolationException) {
                 return; // a concurrent delivery of this same event is applying it
             }
@@ -259,10 +302,12 @@ class PaymentService
                 return; // already processed this exact event
             }
 
-            $payment = Payment::where('transaction_id', $transactionId)->firstOrFail();
-
             if (in_array($payment->status, ['succeeded', 'refund_pending', 'refunded'], true)) {
-                return; // this charge has already been accounted for, under another event id
+                // This charge has already been accounted for under another event id: keep the row
+                // (idempotency + trace) but say what really happened to this event.
+                $event->update(['outcome' => PaymentEvent::OUTCOME_IGNORED]);
+
+                return;
             }
 
             // Lock the order so two attempts succeeding at once can't both see "pending".

@@ -45,7 +45,7 @@ class StripeWebhookController extends Controller
         try {
             match ($event->type) {
                 'payment_intent.succeeded' => $payments->confirm($event->id, $intentId),
-                'payment_intent.payment_failed' => $payments->fail($intentId),
+                'payment_intent.payment_failed' => $payments->fail($intentId, $event->id),
                 default => null, // not subscribed to anything else; acknowledge so Stripe stops retrying
             };
         } catch (ModelNotFoundException) {

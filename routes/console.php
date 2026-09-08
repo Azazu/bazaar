@@ -16,3 +16,6 @@ Schedule::command('payments:retry-refunds')->hourly();
 
 // Unpaid orders expire (bazaar.pending_order_ttl_hours), releasing the coupon uses they reserved.
 Schedule::command('orders:expire-pending')->hourly();
+
+// Retention: the payment-event ledger is pruned after bazaar.payment_event_retention_days.
+Schedule::command('model:prune')->daily();
