@@ -29,6 +29,13 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory, HasStates;
 
+    /**
+     * States in which the money has been taken and kept: the goods are paid for, being
+     * prepared, on their way or delivered. Pending never paid; cancelled and refunded gave
+     * the money back. Used wherever "did this person actually buy it" is the question.
+     */
+    public const array PURCHASED_STATES = ['paid', 'processing', 'shipped', 'delivered'];
+
     protected $fillable = [
         'buyer_id',
         'status',

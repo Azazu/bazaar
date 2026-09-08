@@ -209,12 +209,24 @@ class Product extends Model
         return round((float) ($this->reviews()->approved()->avg('rating') ?? 0), 1);
     }
 
-    /** Has this user bought this product (in a paid order)? Gates who may review. */
+    /**
+     * Has this user bought this product? Gates who may review it. A purchase is a line of the
+     * buyer's order whose money was taken and kept — paid, processing, shipped or delivered
+     * (Order::PURCHASED_STATES) — so the right appears at payment and stays after the goods
+     * arrive, which is when people actually write reviews. A pending, cancelled or refunded
+     * order is not a purchase, and neither is a line whose own sub-order (this store's part of
+     * a multi-vendor order) was cancelled or refunded while the rest went ahead.
+     */
     public function purchasedBy(User $user): bool
     {
         return OrderItem::query()
             ->whereIn('product_variant_id', $this->variants()->select('id'))
-            ->whereHas('order', fn (Builder $q) => $q->where('buyer_id', $user->id)->where('status', 'paid'))
+            ->whereHas('order', fn (Builder $order) => $order
+                ->where('buyer_id', $user->id)
+                ->whereIn('status', Order::PURCHASED_STATES))
+            ->where(fn (Builder $item) => $item
+                ->whereNull('sub_order_id')
+                ->orWhereHas('subOrder', fn (Builder $subOrder) => $subOrder->whereIn('status', Order::PURCHASED_STATES)))
             ->exists();
     }
 }
