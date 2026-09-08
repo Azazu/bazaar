@@ -13,3 +13,6 @@ Schedule::command('sanctum:prune-expired --hours=24')->daily();
 
 // Refunds run as jobs after the order is reversed; anything still pending is re-queued.
 Schedule::command('payments:retry-refunds')->hourly();
+
+// Unpaid orders expire (bazaar.pending_order_ttl_hours), releasing the coupon uses they reserved.
+Schedule::command('orders:expire-pending')->hourly();

@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\CheckoutBlockedException;
+use App\Exceptions\CouponUnavailableException;
 use App\Models\Coupon;
 use App\Services\Cart\CartService;
 use App\Services\Checkout\CheckoutService;
@@ -75,6 +76,12 @@ $place = function () {
             $validated['shipping_method'],
             $coupon,
         );
+    } catch (CouponUnavailableException $e) {
+        // Its last use went to another order a moment ago (or it expired meanwhile): drop it, let the buyer decide.
+        $this->reset('coupon', 'appliedCode');
+        $this->couponError = $e->getMessage();
+
+        return;
     } catch (CheckoutBlockedException $e) {
         $this->addError('checkout', $e->getMessage()); // a store went offline while the buyer was filling the form
 

@@ -33,7 +33,7 @@ class CheckoutService
      *
      * Everything the order is made of is read *inside* the transaction, once, from locked rows:
      * the buyer, then the stores, the products and the variants (each set in id order — the
-     * same order AccountService and StockManager take their locks). The snapshot lines and the subtotal
+     * same order AccountService and StockManager take their locks), then the coupon. The snapshot lines and the subtotal
      * come from that one collection, so they can't disagree even if a price changes while the
      * buyer is on the checkout page, and every line is re-checked for sellability here,
      * whatever the cart endpoints did or didn't check when it was added.
@@ -55,9 +55,16 @@ class CheckoutService
             $subtotal = $variants->sum(fn (ProductVariant $variant) => $variant->price_cents * $cart[$variant->id]);
             $shipping = self::SHIPPING_RATES[$shippingMethod] ?? 0;
 
-            // Re-validate the coupon at order time — never trust a discount computed on the client.
-            $discount = ($coupon && $coupon->isValidFor($subtotal)) ? $coupon->discountFor($subtotal) : 0;
-            $couponId = $discount > 0 ? $coupon->id : null;
+            // The coupon is re-validated and reserved on its locked row, here, at order time, and
+            // the discount is computed from that locked row — never from what the buyer applied
+            // minutes ago, never from a client-side figure — and two checkouts can't share its
+            // last use. Cancelling (or expiring) the order releases the reservation.
+            $discount = 0;
+
+            if ($coupon !== null) {
+                $coupon = $coupon->reserve($subtotal);
+                $discount = $coupon->discountFor($subtotal);
+            }
 
             $order = Order::create([
                 'buyer_id' => $buyer->id,
@@ -65,7 +72,7 @@ class CheckoutService
                 'subtotal_cents' => $subtotal,
                 'shipping_cents' => $shipping,
                 'discount_cents' => $discount,
-                'coupon_id' => $couponId,
+                'coupon_id' => $coupon?->id,
                 'total_cents' => $subtotal + $shipping - $discount,
                 'shipping_address' => $shippingAddress,
                 'shipping_method' => $shippingMethod,
@@ -101,10 +108,6 @@ class CheckoutService
                 foreach ($items as $item) {
                     $item->update(['sub_order_id' => $subOrder->id]);
                 }
-            }
-
-            if ($couponId !== null) {
-                $coupon->increment('used_count');
             }
 
             return $order;

@@ -15,6 +15,13 @@ return [
     'cart_ttl_days' => (int) env('BAZAAR_CART_TTL_DAYS', 30),
 
     /*
+    | How long an unpaid (pending) order may sit before `orders:expire-pending` cancels it,
+    | releasing the coupon use it reserved. An order whose payment attempt was touched within
+    | this window is left alone, so a buyer mid-payment is never cut off.
+    */
+    'pending_order_ttl_hours' => (int) env('BAZAAR_PENDING_ORDER_TTL_HOURS', 24),
+
+    /*
     | Which PaymentGateway implementation to bind: "fake" (sandbox, no keys, settles instantly)
     | or "stripe" (test mode via Stripe.js + webhook; needs the services.stripe.* keys).
     */
