@@ -13,7 +13,7 @@ PHP := $(DC) exec -u www-data -e HOME=/tmp php
         sh sh-nginx mysql redis-cli \
         composer install update \
         artisan migrate migrate-fresh rollback seed storage-link tinker key-gen \
-        queue queue-restart queue-failed \
+        queue queue-restart queue-failed docs-api \
         test test-concurrency pint pint-test stan \
         db-reset clean nuke init
 
@@ -100,6 +100,9 @@ queue-restart: ## Restart the queue worker and the scheduler (e.g. after changin
 
 queue-failed: ## List failed jobs
 	$(PHP) php artisan queue:failed
+
+docs-api: ## Regenerate docs/openapi.json from the code (CI fails if it is stale)
+	$(PHP) php artisan scramble:export --path=docs/openapi.json
 
 key-gen: ## Generate APP_KEY
 	$(PHP) php artisan key:generate

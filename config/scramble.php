@@ -1,6 +1,7 @@
 <?php
 
 use Dedoc\Scramble\Http\Middleware\RestrictedDocsAccess;
+use Dedoc\Scramble\SecurityDocumentation\MiddlewareAuthSecurityStrategy;
 
 return [
     /*
@@ -110,7 +111,11 @@ return [
      * ],
      * ```
      */
-    'servers' => null,
+    // Deterministic: the documented Docker URL, not whatever APP_URL the exporting machine has.
+    // Override for another deployment with API_DOCS_SERVER_URL.
+    'servers' => [
+        'Local Docker stack (make up)' => env('API_DOCS_SERVER_URL', 'http://localhost:8080/api'),
+    ],
 
     /**
      * Determines how Scramble stores the descriptions of enum cases.
@@ -178,6 +183,7 @@ return [
      *     ],
      * ],
      */
-    // 'security_strategy' => \Dedoc\Scramble\SecurityDocumentation\MiddlewareAuthSecurityStrategy::class,
-    'security_strategy' => null,
+    // Bearer auth is documented from the routes: `auth:sanctum` operations require it, the public
+    // catalog, reviews and token endpoints are marked `security: []`.
+    'security_strategy' => MiddlewareAuthSecurityStrategy::class,
 ];

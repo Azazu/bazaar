@@ -67,7 +67,7 @@ flowchart LR
 
 ## REST API
 
-Interactive reference at **`/docs/api`** (generated from the controllers, Form Requests and Resources by Scramble; the exported spec lives in [`docs/openapi.json`](docs/openapi.json)). Stateless, token-authenticated, JSON errors, `60 req/min` per client (`5/min` for token issuance). `POST /orders/{id}/pay` returns the Stripe `client_secret`; the client confirms with the Stripe SDK and polls the order until the webhook marks it paid.
+Interactive reference at **`/docs/api`** (generated from the controllers, Form Requests and Resources by Scramble; the exported spec lives in [`docs/openapi.json`](docs/openapi.json); `make docs-api` regenerates it and CI fails when it is stale). Public catalog, review and token endpoints are documented without auth; everything else requires the bearer token. Stateless, token-authenticated, JSON errors, `60 req/min` per client (`5/min` for token issuance). `POST /orders/{id}/pay` returns the Stripe `client_secret`; the client confirms with the Stripe SDK and polls the order until the webhook marks it paid.
 
 | Method | Endpoint | Auth |
 | --- | --- | --- |

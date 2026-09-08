@@ -7,7 +7,8 @@
     },
     "servers": [
         {
-            "url": "http://localhost/api"
+            "url": "http://localhost:8080/api",
+            "description": "Local Docker stack (make up)"
         }
     ],
     "security": [
@@ -235,7 +236,8 @@
                             }
                         }
                     }
-                }
+                },
+                "security": []
             }
         },
         "/v1/checkout": {
@@ -944,7 +946,8 @@
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     }
-                }
+                },
+                "security": []
             }
         },
         "/v1/products/{slug}": {
@@ -995,7 +998,8 @@
                             }
                         }
                     }
-                }
+                },
+                "security": []
             }
         },
         "/v1/products/{product}/reviews": {
@@ -1041,7 +1045,8 @@
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
                     }
-                }
+                },
+                "security": []
             },
             "post": {
                 "operationId": "v1.products.reviews.store",
@@ -1158,7 +1163,8 @@
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     }
-                }
+                },
+                "security": []
             }
         },
         "/v1/auth/tokens/current": {
@@ -1410,6 +1416,12 @@
                             "null"
                         ]
                     },
+                    "sku": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "product_title": {
                         "type": "string"
                     },
@@ -1432,6 +1444,7 @@
                 "required": [
                     "id",
                     "product_variant_id",
+                    "sku",
                     "product_title",
                     "variant_name",
                     "unit_price_cents",
@@ -1635,14 +1648,7 @@
                         }
                     },
                     "store": {
-                        "anyOf": [
-                            {
-                                "$ref": "#/components/schemas/StoreResource"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ]
+                        "$ref": "#/components/schemas/StoreResource"
                     },
                     "categories": {
                         "type": "array",

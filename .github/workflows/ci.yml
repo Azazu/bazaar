@@ -44,6 +44,12 @@ jobs:
       - name: Security audit
         run: composer audit
 
+      # The committed OpenAPI document must be the one the code generates.
+      - name: OpenAPI spec is up to date
+        run: |
+          php artisan scramble:export --path=/tmp/openapi.json
+          diff -u docs/openapi.json /tmp/openapi.json || { echo '::error::docs/openapi.json is stale — run `make docs-api` and commit'; exit 1; }
+
   tests:
     name: Pest (SQLite)
     runs-on: ubuntu-latest
