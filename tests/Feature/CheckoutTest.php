@@ -2,6 +2,7 @@
 
 use App\Enums\ProductStatus;
 use App\Enums\StoreStatus;
+use App\Events\OrderPaid;
 use App\Exceptions\CheckoutBlockedException;
 use App\Models\Order;
 use App\Models\Product;
@@ -38,7 +39,7 @@ it('places a pending order from the cart and keeps the cart until payment', func
         ->and(app(CartService::class)->count())->toBe(3); // an abandoned checkout doesn't lose the basket
 });
 
-it('removes only the purchased lines from the cart when the order is paid', function () {
+it('removes only the purchased quantities from the cart when the order is paid', function () {
     $buyer = User::factory()->create();
     $bought = ProductVariant::factory()->create(['stock' => 5]);
     $later = ProductVariant::factory()->create(['stock' => 5]);
@@ -48,11 +49,16 @@ it('removes only the purchased lines from the cart when the order is paid', func
     $order = app(CheckoutService::class)->place($buyer, [
         'name' => 'A', 'line1' => 'B', 'city' => 'C', 'postcode' => '12345', 'country' => 'US',
     ], 'standard');
-    app(CartService::class)->add($later->id); // picked after checking out
+    app(CartService::class)->add($bought->id, 1); // one more of the *same* variant, after checking out
+    app(CartService::class)->add($later->id);     // and something else
 
     pay($order);
 
-    expect(app(CartService::class)->items()->pluck('variant.id')->all())->toBe([$later->id]);
+    expect(app(CartService::class)->lines())->toBe([$bought->id => 1, $later->id => 1]);
+
+    // A replayed OrderPaid for the same order must not subtract the two units again.
+    OrderPaid::dispatch($order->fresh());
+    expect(app(CartService::class)->lines())->toBe([$bought->id => 1, $later->id => 1]);
 });
 
 it('lists the buyer\'s orders on the dashboard with a shortcut to pay pending ones', function () {

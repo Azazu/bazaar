@@ -16,9 +16,11 @@ class CartService
     /** Add a variant to the cart (or bump its quantity). */
     public function add(int $variantId, int $qty = 1): void
     {
-        $cart = $this->raw();
-        $cart[$variantId] = ($cart[$variantId] ?? 0) + $qty;
-        $this->save($cart);
+        $this->storage->mutate(function (array $cart) use ($variantId, $qty) {
+            $cart[$variantId] = ($cart[$variantId] ?? 0) + $qty;
+
+            return $cart;
+        });
     }
 
     /**
@@ -29,19 +31,23 @@ class CartService
      */
     public function update(int $variantId, int $qty): bool
     {
-        $cart = $this->raw();
-
-        if (! array_key_exists($variantId, $cart)) {
+        if (! $this->has($variantId)) {
             return false;
         }
 
-        if ($qty <= 0) {
-            unset($cart[$variantId]);
-        } else {
-            $cart[$variantId] = $qty;
-        }
+        $this->storage->mutate(function (array $cart) use ($variantId, $qty) {
+            if (! array_key_exists($variantId, $cart)) {
+                return $cart; // removed by a concurrent writer in the meantime: nothing to set
+            }
 
-        $this->save($cart);
+            if ($qty <= 0) {
+                unset($cart[$variantId]);
+            } else {
+                $cart[$variantId] = $qty;
+            }
+
+            return $cart;
+        });
 
         return true;
     }
@@ -53,9 +59,58 @@ class CartService
 
     public function remove(int $variantId): void
     {
-        $cart = $this->raw();
-        unset($cart[$variantId]);
-        $this->save($cart);
+        $this->storage->mutate(function (array $cart) use ($variantId) {
+            unset($cart[$variantId]);
+
+            return $cart;
+        });
+    }
+
+    /**
+     * Take purchased quantities out of the cart — exactly the snapshot quantities, so a unit
+     * of the same variant added after checkout stays. Lines that reach zero disappear.
+     *
+     * @param  array<int, int>  $purchased  map of [variant_id => qty]
+     */
+    public function release(array $purchased): void
+    {
+        $this->storage->mutate(fn (array $cart) => $this->subtract($cart, $purchased));
+    }
+
+    /**
+     * @param  array<int, int>  $cart
+     * @param  array<int, int>  $purchased
+     * @return array<int, int>
+     */
+    private function subtract(array $cart, array $purchased): array
+    {
+        foreach ($purchased as $variantId => $qty) {
+            if (! array_key_exists($variantId, $cart)) {
+                continue;
+            }
+
+            $cart[$variantId] -= $qty;
+
+            if ($cart[$variantId] <= 0) {
+                unset($cart[$variantId]);
+            }
+        }
+
+        return $cart;
+    }
+
+    /**
+     * release() at most once per token — the token names the order, so a replayed OrderPaid
+     * (or a second listener run) cannot subtract the same purchase twice. The marker is
+     * written together with the change (CartStorage::mutateOnce), so a release that did not
+     * happen (lock timeout, crash) leaves no marker and the retry does it.
+     *
+     * @param  array<int, int>  $purchased
+     * @return bool whether this call did the release
+     */
+    public function releaseOnce(string $token, array $purchased): bool
+    {
+        return $this->storage->mutateOnce($token, fn (array $cart) => $this->subtract($cart, $purchased));
     }
 
     public function clear(): void
@@ -71,13 +126,13 @@ class CartService
      */
     public function merge(array $lines): void
     {
-        $cart = $this->raw();
+        $this->storage->mutate(function (array $cart) use ($lines) {
+            foreach ($lines as $variantId => $qty) {
+                $cart[$variantId] = ($cart[$variantId] ?? 0) + $qty;
+            }
 
-        foreach ($lines as $variantId => $qty) {
-            $cart[$variantId] = ($cart[$variantId] ?? 0) + $qty;
-        }
-
-        $this->save($cart);
+            return $cart;
+        });
     }
 
     /**
@@ -131,11 +186,5 @@ class CartService
     private function raw(): array
     {
         return $this->storage->get();
-    }
-
-    /** @param  array<int, int>  $cart */
-    private function save(array $cart): void
-    {
-        $this->storage->put($cart);
     }
 }
