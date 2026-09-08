@@ -31,7 +31,8 @@ class StoreForm
                     ->image()
                     ->avatar()
                     ->imageEditor()
-                    ->maxSize(4 * 1024),
+                    ->maxSize(4 * 1024)
+                    ->rules([ImageProcessor::DIMENSIONS_RULE]),
                 Select::make('status')
                     ->options(StoreStatus::class)
                     ->default('pending')

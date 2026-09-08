@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\ImageTooLargeException;
 use App\Services\Media\ImageProcessor;
 use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Foundation\Queue\Queueable;
@@ -22,6 +23,10 @@ class ProcessImage implements ShouldQueueAfterCommit
 
     public function handle(ImageProcessor $processor): void
     {
-        $processor->processPath($this->path);
+        try {
+            $processor->processPath($this->path);
+        } catch (ImageTooLargeException $e) {
+            $this->fail($e); // retrying won't shrink the file; record it and move on (the original still serves)
+        }
     }
 }

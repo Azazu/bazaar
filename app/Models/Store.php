@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Stores are archived (soft-deleted), never removed: their sub-orders and payouts are
@@ -44,7 +45,7 @@ class Store extends Model
             }
 
             if ($previous = $store->getOriginal('logo')) {
-                app(ImageProcessor::class)->deletePath($previous);
+                DB::afterCommit(fn () => app(ImageProcessor::class)->deletePath($previous)); // not if the save rolls back
             }
 
             if ($store->logo) {

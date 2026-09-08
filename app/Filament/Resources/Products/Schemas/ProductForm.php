@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Schemas;
 
 use App\Enums\ProductStatus;
 use App\Models\ProductImage;
+use App\Services\Media\ImageProcessor;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -49,6 +50,7 @@ class ProductForm
                             ->image()
                             ->imageEditor()
                             ->maxSize(8 * 1024)
+                            ->rules([ImageProcessor::DIMENSIONS_RULE]) // what the resize worker can afford to decode
                             ->required(),
                     ])
                     ->defaultItems(0)
