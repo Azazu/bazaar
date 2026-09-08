@@ -75,7 +75,7 @@ $advance = function (SubOrder $subOrder) {
                     </div>
                     <ul class="mt-2 text-sm text-gray-600">
                         @foreach ($sub->items as $item)
-                            <li>{{ $item->product_title }} — {{ $item->variant_name }} × {{ $item->qty }}</li>
+                            <li>{{ $item->product_title }} — {{ $item->variant_name }} × {{ $item->qty }}@if ($item->sku) <span class="text-gray-400">({{ $item->sku }})</span>@endif</li>
                         @endforeach
                     </ul>
                     <div class="mt-3">

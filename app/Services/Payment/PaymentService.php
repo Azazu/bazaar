@@ -4,9 +4,9 @@ namespace App\Services\Payment;
 
 use App\Events\OrderPaid;
 use App\Events\OrderUnfulfillable;
-use App\Exceptions\InsufficientStockException;
 use App\Exceptions\OrderNotPayableException;
 use App\Exceptions\SurplusPaymentException;
+use App\Exceptions\UnfulfillableOrderException;
 use App\Jobs\RefundPayment;
 use App\Models\Order;
 use App\Models\Payment;
@@ -162,11 +162,12 @@ class PaymentService
     {
         try {
             $this->applySucceeded($eventId, $transactionId);
-        } catch (InsufficientStockException $soldOut) {
+        } catch (UnfulfillableOrderException $unfulfillable) {
             // The transaction above rolled back: the order is still pending, no stock moved, no
             // payouts exist — but the customer *was* charged. Reverse it instead of failing the
             // webhook, which would only make the provider retry into the same shortage for days.
-            $this->refundUnfulfillable($eventId, $transactionId, $soldOut);
+            // (Sold out, or the variant was removed from the catalog after checkout: same outcome.)
+            $this->refundUnfulfillable($eventId, $transactionId, $unfulfillable);
         } catch (SurplusPaymentException $surplus) {
             $this->refundSurplus($eventId, $surplus->payment);
         }
@@ -177,12 +178,12 @@ class PaymentService
      * order and its sub-orders cancelled, event id in the ledger so redeliveries are no-ops)
      * and let RefundPayment return the money after commit.
      */
-    private function refundUnfulfillable(string $eventId, string $transactionId, InsufficientStockException $soldOut): void
+    private function refundUnfulfillable(string $eventId, string $transactionId, UnfulfillableOrderException $reason): void
     {
         $payment = Payment::where('transaction_id', $transactionId)->firstOrFail();
         $order = $payment->order ?? throw new LogicException("Payment #{$payment->id} has no order.");
 
-        $this->recordRefund($eventId, $payment, function () use ($order, $soldOut) {
+        $this->recordRefund($eventId, $payment, function () use ($order, $reason) {
             if ($order->status instanceof Pending) {
                 $order->status->transitionTo(Cancelled::class);
 
@@ -192,7 +193,7 @@ class PaymentService
                     }
                 }
 
-                OrderUnfulfillable::dispatch($order->refresh(), $soldOut->variant);
+                OrderUnfulfillable::dispatch($order->refresh(), $reason->itemLabel());
             }
         });
     }

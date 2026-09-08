@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProductStatus;
 use App\Enums\StoreStatus;
+use App\Exceptions\DeletionBlockedException;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,8 +29,15 @@ class Product extends Model
 
     protected static function booted(): void
     {
-        // The FK cascade would drop the rows silently; going through the models removes the files too.
-        static::deleting(fn (self $product) => $product->images->each->delete());
+        static::deleting(function (self $product) {
+            // The FK cascade would drop the variants silently, past the guard in ProductVariant.
+            if ($product->variants->contains(fn (ProductVariant $variant) => $variant->isInOpenOrders())) {
+                throw new DeletionBlockedException("{$product->title} is part of an order that is still in progress and cannot be removed yet.");
+            }
+
+            // Likewise for images: going through the models removes the files too.
+            $product->images->each->delete();
+        });
     }
 
     protected $fillable = ['store_id', 'title', 'slug', 'description', 'price_cents', 'currency', 'status'];

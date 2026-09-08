@@ -72,12 +72,14 @@ class OrderInfolist
                             ->table([
                                 TableColumn::make('Product'),
                                 TableColumn::make('Variant'),
+                                TableColumn::make('SKU'),
                                 TableColumn::make('Unit price'),
                                 TableColumn::make('Qty'),
                             ])
                             ->schema([
                                 TextEntry::make('product_title'),
                                 TextEntry::make('variant_name')->placeholder('—'),
+                                TextEntry::make('sku')->placeholder('—'),
                                 TextEntry::make('unit_price_cents')
                                     ->formatStateUsing(fn (int $state, OrderItem $record): string => money($state, $record->order->currency ?? 'USD')),
                                 TextEntry::make('qty'),

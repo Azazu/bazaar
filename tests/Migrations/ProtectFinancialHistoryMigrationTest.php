@@ -12,10 +12,11 @@ use Illuminate\Support\Facades\Schema;
 
 const PROTECT_HISTORY = '2026_09_07_130000_protect_financial_history';
 
-/** Roll back to the schema as it was before the migration under test. */
+/** Roll back to the schema as it was before the migration under test (and anything newer). */
 function schemaBeforeHistoryProtection(): void
 {
-    Artisan::call('migrate:rollback', ['--step' => 1]);
+    $newer = DB::table('migrations')->where('migration', '>', PROTECT_HISTORY)->count();
+    Artisan::call('migrate:rollback', ['--step' => $newer + 1]);
 
     expect(DB::table('migrations')->where('migration', PROTECT_HISTORY)->exists())->toBeFalse()
         ->and(Schema::hasColumn('users', 'deleted_at'))->toBeFalse()

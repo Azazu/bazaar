@@ -3,14 +3,16 @@
 namespace App\Events;
 
 use App\Models\Order;
-use App\Models\ProductVariant;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-/** Payment settled but an item had sold out meanwhile: the order was cancelled and refunded. */
+/**
+ * Payment settled but a line could not be delivered (sold out, or its variant is gone):
+ * the order was cancelled and refunded. $item names the line for the buyer.
+ */
 class OrderUnfulfillable
 {
     use Dispatchable, SerializesModels;
 
-    public function __construct(public Order $order, public ProductVariant $soldOut) {}
+    public function __construct(public Order $order, public string $item) {}
 }

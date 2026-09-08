@@ -1,6 +1,6 @@
 <?php
 
-use App\Exceptions\InsufficientStockException;
+use App\Exceptions\UnfulfillableOrderException;
 use App\Models\Order;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
@@ -33,10 +33,8 @@ $pay = function () {
 
     try {
         $started = app(PaymentService::class)->start($this->order);
-    } catch (InsufficientStockException $e) {
-        $this->paymentError = __(':item is out of stock — please adjust your order.', [
-            'item' => trim(($e->variant->product?->title ?? '').' — '.$e->variant->name),
-        ]);
+    } catch (UnfulfillableOrderException $e) {
+        $this->paymentError = __(':item is no longer available — please adjust your order.', ['item' => $e->itemLabel()]);
 
         return;
     }

@@ -9,8 +9,6 @@ class NotifyBuyerOfUnfulfillableOrder
 {
     public function handle(OrderUnfulfillable $event): void
     {
-        $item = trim(($event->soldOut->product->title ?? 'An item').' — '.$event->soldOut->name);
-
-        $event->order->buyer?->notify(new OrderUnfulfillableNotice($event->order, $item));
+        $event->order->buyer?->notify(new OrderUnfulfillableNotice($event->order, $event->item));
     }
 }

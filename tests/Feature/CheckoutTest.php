@@ -67,7 +67,7 @@ it('lists the buyer\'s orders on the dashboard with a shortcut to pay pending on
         ->assertSee('Pay now');
 });
 
-it('snapshots the line item price and name at purchase time', function () {
+it('snapshots the line item price, name and SKU at purchase time', function () {
     $user = User::factory()->create();
     $variant = ProductVariant::factory()->create(['price_cents' => 2500, 'name' => 'M / Red']);
 
@@ -81,6 +81,7 @@ it('snapshots the line item price and name at purchase time', function () {
 
     expect($item->unit_price_cents)->toBe(2500)
         ->and($item->variant_name)->toBe('M / Red')
+        ->and($item->sku)->toBe($variant->sku)
         ->and($order->shipping_cents)->toBe(1500);
 });
 

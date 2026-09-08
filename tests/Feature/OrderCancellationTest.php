@@ -163,7 +163,7 @@ it('shows the shortage on the order page instead of failing', function () {
         ->call('pay')
         ->assertHasNoErrors()
         ->assertSee('XL / red')
-        ->assertSee('out of stock');
+        ->assertSee('no longer available');
 
     expect($order->fresh()->status)->toBeInstanceOf(Pending::class);
 });

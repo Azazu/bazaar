@@ -77,6 +77,7 @@ class CheckoutService
 
                 $item = $order->items()->create([
                     'product_variant_id' => $variant->id,
+                    'sku' => $variant->sku,                        // snapshot
                     'product_title' => $product->title,            // snapshot
                     'variant_name' => $variant->name,              // snapshot
                     'unit_price_cents' => $variant->price_cents,   // snapshot price

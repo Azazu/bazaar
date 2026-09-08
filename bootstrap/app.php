@@ -1,8 +1,8 @@
 <?php
 
 use App\Exceptions\CheckoutBlockedException;
-use App\Exceptions\InsufficientStockException;
 use App\Exceptions\OrderNotPayableException;
+use App\Exceptions\UnfulfillableOrderException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -36,9 +36,9 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*'),
         );
 
-        // Stock ran out between checkout and payment: the payment transaction rolled back
+        // A line can't be delivered (sold out, or its variant is gone): the payment can't start
         // and the order is still pending — tell the API client why instead of a 500.
-        $exceptions->render(fn (InsufficientStockException $e, Request $request) => $request->is('api/*')
+        $exceptions->render(fn (UnfulfillableOrderException $e, Request $request) => $request->is('api/*')
             ? response()->json(['message' => $e->getMessage()], 422)
             : null);
 

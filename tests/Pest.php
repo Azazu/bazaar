@@ -107,6 +107,7 @@ function orderForVariant(ProductVariant $variant, int $qty): Order
 
     $order->items()->create([
         'product_variant_id' => $variant->id,
+        'sku' => $variant->sku,
         'product_title' => $variant->product?->title,
         'variant_name' => $variant->name,
         'unit_price_cents' => $variant->price_cents,

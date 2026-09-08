@@ -28,7 +28,7 @@ class OrderUnfulfillableNotice extends Notification implements ShouldQueue
     {
         return (new MailMessage)
             ->subject("Order #{$this->order->id} could not be fulfilled")
-            ->line("We're sorry — \"{$this->soldOutItem}\" sold out while your payment was being processed.")
+            ->line("We're sorry — \"{$this->soldOutItem}\" became unavailable while your payment was being processed.")
             ->line("Order #{$this->order->id} has been cancelled and ".money($this->order->total_cents, $this->order->currency).' is being refunded to your original payment method.')
             ->action('Browse the catalog', route('catalog.index'));
     }
@@ -37,7 +37,7 @@ class OrderUnfulfillableNotice extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'message' => "Order #{$this->order->id} could not be fulfilled — {$this->soldOutItem} sold out; refunded",
+            'message' => "Order #{$this->order->id} could not be fulfilled — {$this->soldOutItem} is unavailable; refunded",
             'url' => route('orders.show', $this->order),
             'order_id' => $this->order->id,
             'sold_out_item' => $this->soldOutItem,
