@@ -44,9 +44,19 @@ jobs:
       - name: Security audit
         run: composer audit
 
-      # The committed OpenAPI document must be the one the code generates.
+      # The committed OpenAPI document must be the one the code generates. Scramble reads the
+      # models' table schemas while inferring resource shapes, so it needs a migrated database:
+      # a throwaway SQLite file produces the same document as MySQL does locally.
       - name: OpenAPI spec is up to date
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: /tmp/openapi.sqlite
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
         run: |
+          touch /tmp/openapi.sqlite
+          php artisan migrate --force --no-interaction
           php artisan scramble:export --path=/tmp/openapi.json
           diff -u docs/openapi.json /tmp/openapi.json || { echo '::error::docs/openapi.json is stale — run `make docs-api` and commit'; exit 1; }
 
