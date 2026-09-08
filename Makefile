@@ -13,6 +13,7 @@ PHP := $(DC) exec -u www-data -e HOME=/tmp php
         sh sh-nginx mysql redis-cli \
         composer install update \
         artisan migrate migrate-fresh rollback seed storage-link tinker key-gen \
+        queue queue-restart queue-failed \
         test test-concurrency pint pint-test stan \
         db-reset clean nuke init
 
@@ -91,8 +92,14 @@ seed: ## Run database seeders
 tinker: ## Open Tinker REPL
 	$(PHP) php artisan tinker
 
-queue: ## Run the Redis queue worker (for notifications/jobs)
-	$(PHP) php artisan queue:work
+queue: ## Tail the queue worker (it runs as the `queue` service; see also `make queue-restart`)
+	$(DC) logs -f --tail=50 queue
+
+queue-restart: ## Restart the queue worker and the scheduler (e.g. after changing job code or .env)
+	$(DC) restart queue scheduler
+
+queue-failed: ## List failed jobs
+	$(PHP) php artisan queue:failed
 
 key-gen: ## Generate APP_KEY
 	$(PHP) php artisan key:generate

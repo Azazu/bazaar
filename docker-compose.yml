@@ -30,6 +30,73 @@ services:
       - composer_cache:/root/.composer/cache
     restart: unless-stopped
 
+  # Queue worker: mail, database notifications, WebP derivatives, provider refunds all run
+  # as jobs — without this the demo silently does none of it. Same image and code mount as
+  # php. `queue:listen` re-boots the framework per job, so code changes on the bind mount
+  # apply immediately (a long-lived `queue:work` would keep stale code in memory).
+  queue:
+    build:
+      context: .
+      dockerfile: .docker/php/Dockerfile
+      args:
+        WWW_UID: ${WWW_UID:-1000}
+        WWW_GID: ${WWW_GID:-1000}
+    user: www-data
+    environment:
+      HOME: /tmp
+    working_dir: /app
+    # `make init` installs vendor/ after `up`: wait for it instead of crash-looping until then.
+    command: >
+      sh -c 'until [ -f vendor/autoload.php ]; do echo "queue: waiting for composer install…"; sleep 3; done;
+             exec php artisan queue:listen redis --tries=3 --backoff=10 --timeout=120'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app:delegated
+    # After `exec` the worker *is* PID 1, so the container dies (and restarts) with it; the
+    # check confirms PID 1 is still the worker and not a stuck shell. No procps needed.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'queue:listen' /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Scheduler: runs the cron-style tasks in routes/console.php (pending-order expiry,
+  # refund reconciliation, token pruning). One process, ticks every minute.
+  scheduler:
+    build:
+      context: .
+      dockerfile: .docker/php/Dockerfile
+      args:
+        WWW_UID: ${WWW_UID:-1000}
+        WWW_GID: ${WWW_GID:-1000}
+    user: www-data
+    environment:
+      HOME: /tmp
+    working_dir: /app
+    command: >
+      sh -c 'until [ -f vendor/autoload.php ]; do sleep 3; done;
+             exec php artisan schedule:work'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app:delegated
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'schedule:work' /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
   mysql:
     image: mysql:8.0
     command: >

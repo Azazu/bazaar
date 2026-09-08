@@ -121,6 +121,8 @@ make assets    # build the front-end
 | Vendor dashboard | log in as `vendor1@bazaar.test` … `vendor4@bazaar.test` / `password`, then **Vendor** in the header |
 | Outgoing mail | http://localhost:8080 → Mailpit at http://localhost:8025 |
 
+The stack is five app containers plus infrastructure: `nginx`, `php` (FPM), `queue` (the worker that sends mail and notifications, resizes images and executes provider refunds), `scheduler` (expires unpaid orders, re-queues stuck refunds, prunes tokens), MySQL, Redis and Mailpit. Everything queued is processed as soon as `make up` is done; `make queue` tails the worker, `make queue-failed` lists failed jobs, `docker compose ps` shows the worker's health.
+
 Payments default to a keyless sandbox gateway. To exercise the real Stripe flow in test mode, set `PAYMENT_GATEWAY=stripe` plus your `pk_test_`/`sk_test_` keys in `.env` (live keys are refused at boot, and live-mode webhook events are rejected), forward webhooks with `stripe listen --forward-to localhost:8080/stripe/webhook` (it prints the `STRIPE_WEBHOOK_SECRET`), and pay with card `4242 4242 4242 4242`. Run `make help` for the full list of targets.
 
 ## Testing
