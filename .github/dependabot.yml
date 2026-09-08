@@ -16,6 +16,11 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Tailwind v4 drops the @tailwind directives and the JS config: a migration, not a bump.
+      # Minor/patch releases of v3 keep coming through; lift this when the migration is planned.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
