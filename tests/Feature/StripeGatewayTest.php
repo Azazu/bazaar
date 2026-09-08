@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Order;
+use App\Providers\AppServiceProvider;
 use App\Services\Payment\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\StripeGateway;
+use App\Services\Payment\StripeTestMode;
 use Stripe\ApiRequestor;
 use Stripe\StripeClient;
 use Tests\Support\RecordingStripeHttpClient;
@@ -53,6 +55,41 @@ it('binds the gateway the config asks for', function () {
 
     config(['bazaar.payment_gateway' => 'stripe', 'services.stripe.secret' => 'sk_test_dummy']);
     expect(app(PaymentGateway::class))->toBeInstanceOf(StripeGateway::class);
+});
+
+it('refuses live-mode keys: the app only runs Stripe in test mode', function () {
+    config(['bazaar.payment_gateway' => 'stripe']);
+
+    config(['services.stripe.secret' => 'sk_live_0000000000', 'services.stripe.key' => 'pk_test_ok']);
+    app()->forgetInstance(StripeClient::class);
+    expect(fn () => app(PaymentGateway::class))->toThrow(RuntimeException::class, 'STRIPE_SECRET must start with sk_test_ (got a "sk_live_" key)');
+
+    config(['services.stripe.secret' => 'sk_test_ok', 'services.stripe.key' => 'pk_live_0000000000']);
+    app()->forgetInstance(StripeClient::class);
+    expect(fn () => app(PaymentGateway::class))->toThrow(RuntimeException::class, 'STRIPE_KEY must start with pk_test_ (got a "pk_live_" key)');
+
+    // Restricted test keys are fine too; a missing publishable key only matters to the browser.
+    config(['services.stripe.secret' => 'rk_test_ok', 'services.stripe.key' => null]);
+    app()->forgetInstance(StripeClient::class);
+    expect(app(PaymentGateway::class))->toBeInstanceOf(StripeGateway::class);
+});
+
+it('refuses to start in Stripe mode with live keys, and boots normally with test keys', function () {
+    $boot = fn () => app()->make(AppServiceProvider::class, ['app' => app()])->boot();
+
+    config(['bazaar.payment_gateway' => 'stripe', 'services.stripe.secret' => 'sk_live_0000000000', 'services.stripe.key' => null]);
+    expect($boot)->toThrow(RuntimeException::class, 'Refusing to start');
+
+    config(['services.stripe.secret' => 'sk_test_ok', 'services.stripe.key' => 'pk_test_ok']);
+    expect($boot)->not->toThrow(RuntimeException::class);
+
+    config(['bazaar.payment_gateway' => 'fake', 'services.stripe.secret' => 'sk_live_0000000000']);
+    expect($boot)->not->toThrow(RuntimeException::class); // sandbox mode never touches Stripe
+});
+
+it('never puts the key itself into an error message', function () {
+    expect(fn () => StripeTestMode::assert('sk_live_SECRETVALUE123', null))
+        ->toThrow(fn (RuntimeException $e) => expect($e->getMessage())->not->toContain('SECRETVALUE'));
 });
 
 it('refuses to run Stripe without a secret key', function () {

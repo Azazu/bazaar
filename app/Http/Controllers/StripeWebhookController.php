@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Payment\PaymentService;
+use App\Services\Payment\StripeTestMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -28,6 +29,14 @@ class StripeWebhookController extends Controller
             );
         } catch (SignatureVerificationException|UnexpectedValueException) {
             return response('Invalid signature.', 400);
+        }
+
+        // A live-mode event can only mean the endpoint is wired to a live account. Never act on
+        // it; answer 4xx so the failure is visible in the Stripe dashboard instead of swallowed.
+        if (StripeTestMode::isLiveEvent($event)) {
+            Log::critical('Live-mode Stripe event received by a test-mode application; ignored.', ['event' => $event->id, 'type' => $event->type]);
+
+            return response('This endpoint only accepts test-mode events.', 400);
         }
 
         /** @var string $intentId */

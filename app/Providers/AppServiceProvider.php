@@ -7,6 +7,7 @@ use App\Services\Cart\CartStorage;
 use App\Services\Cart\CartStorageFactory;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayRegistry;
+use App\Services\Payment\StripeTestMode;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
@@ -19,7 +20,6 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\ImageManager;
-use RuntimeException;
 use Stripe\StripeClient;
 
 class AppServiceProvider extends ServiceProvider
@@ -39,14 +39,11 @@ class AppServiceProvider extends ServiceProvider
         // GD is what the php image ships with (with WebP); swap for Imagick here if it ever matters.
         $this->app->singleton(ImageManager::class, fn (): ImageManager => new ImageManager(GdDriver::class));
 
+        // Test-mode keys only, verified every time the client is built (see also boot()).
         $this->app->singleton(StripeClient::class, function (): StripeClient {
-            $secret = config('services.stripe.secret');
+            StripeTestMode::assertConfigured();
 
-            if (blank($secret)) {
-                throw new RuntimeException('PAYMENT_GATEWAY=stripe requires STRIPE_SECRET (a test-mode key).');
-            }
-
-            return new StripeClient($secret);
+            return new StripeClient((string) config('services.stripe.secret'));
         });
 
         // Cart storage follows the viewer: account cart once authenticated (web session or
@@ -61,6 +58,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Fail fast: in Stripe mode the app refuses to start with anything but test-mode keys.
+        if (config('bazaar.payment_gateway') === 'stripe') {
+            StripeTestMode::assertConfigured();
+        }
+
         // Admins bypass all policy checks.
         Gate::before(fn (User $user) => $user->hasRole('admin') ? true : null);
 

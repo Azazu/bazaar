@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Order;
+use App\Models\PaymentEvent;
 use App\Models\ProductVariant;
 use App\States\Order\Cancelled;
 use App\States\Order\Paid;
@@ -37,15 +38,31 @@ function orderAwaitingStripe(string $intentId = 'pi_test_123'): array
     return [$order, $variant];
 }
 
-function stripeEvent(string $type, string $intentId, string $eventId = 'evt_test_1'): string
+function stripeEvent(string $type, string $intentId, string $eventId = 'evt_test_1', bool $livemode = false): string
 {
     return json_encode([
         'id' => $eventId,
         'object' => 'event',
         'type' => $type,
+        'livemode' => $livemode,
         'data' => ['object' => ['id' => $intentId, 'object' => 'payment_intent']],
     ], JSON_THROW_ON_ERROR);
 }
+
+it('ignores a live-mode event even when it is correctly signed', function () {
+    [$order, $variant] = orderAwaitingStripe();
+    $payload = stripeEvent('payment_intent.succeeded', 'pi_test_123', 'evt_live_1', livemode: true);
+
+    $this->call('POST', '/stripe/webhook', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => stripeSignature($payload),
+        'CONTENT_TYPE' => 'application/json',
+    ], $payload)->assertStatus(400);
+
+    expect($order->fresh()->status)->toBeInstanceOf(Pending::class)
+        ->and($order->payments()->value('status'))->toBe('pending')
+        ->and($variant->fresh()->stock)->toBe(5)
+        ->and(PaymentEvent::where('event_id', 'evt_live_1')->exists())->toBeFalse();
+});
 
 it('marks the order paid on a signed payment_intent.succeeded event', function () {
     [$order, $variant] = orderAwaitingStripe();

@@ -121,7 +121,7 @@ make assets    # build the front-end
 | Vendor dashboard | log in as `vendor1@bazaar.test` … `vendor4@bazaar.test` / `password`, then **Vendor** in the header |
 | Outgoing mail | http://localhost:8080 → Mailpit at http://localhost:8025 |
 
-Payments default to a keyless sandbox gateway. To exercise the real Stripe flow in test mode, set `PAYMENT_GATEWAY=stripe` plus your `pk_test_`/`sk_test_` keys in `.env`, forward webhooks with `stripe listen --forward-to localhost:8080/stripe/webhook` (it prints the `STRIPE_WEBHOOK_SECRET`), and pay with card `4242 4242 4242 4242`. Run `make help` for the full list of targets.
+Payments default to a keyless sandbox gateway. To exercise the real Stripe flow in test mode, set `PAYMENT_GATEWAY=stripe` plus your `pk_test_`/`sk_test_` keys in `.env` (live keys are refused at boot, and live-mode webhook events are rejected), forward webhooks with `stripe listen --forward-to localhost:8080/stripe/webhook` (it prints the `STRIPE_WEBHOOK_SECRET`), and pay with card `4242 4242 4242 4242`. Run `make help` for the full list of targets.
 
 ## Testing
 
