@@ -12,7 +12,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "brick/money": "^0.14.0",
+        "brick/money": "^0.15.2",
         "dedoc/scramble": "^0.13.42",
         "filament/filament": "^4.12",
         "filament/spatie-laravel-settings-plugin": "^4.0",
